@@ -1,0 +1,1 @@
+fn(std::string::String, std::sync::Arc<tokio::sync::RwLock<(dyn traits::Exchange + 'static)>>) -> impl warp::Future<Output = std::result::Result<impl Reply, Rejection>> {cancel_iceberg_order}

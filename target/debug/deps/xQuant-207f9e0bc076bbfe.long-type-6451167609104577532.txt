@@ -1,0 +1,1 @@
+fn(TrailingStopRequest, Arc<tokio::sync::RwLock<(dyn Exchange + 'static)>>) -> impl warp::Future<Output = std::result::Result<impl Reply, Rejection>> {create_trailing_stop}
