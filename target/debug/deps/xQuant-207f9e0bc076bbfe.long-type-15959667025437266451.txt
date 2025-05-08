@@ -1,1 +1,0 @@
-fn(std::string::String, Arc<tokio::sync::RwLock<(dyn Exchange + 'static)>>) -> impl warp::Future<Output = std::result::Result<impl Reply, Rejection>> {cancel_trailing_stop}
