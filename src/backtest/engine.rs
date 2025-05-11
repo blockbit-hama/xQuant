@@ -1,56 +1,101 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
+use tokio::sync::RwLock;
+
 use crate::error::TradingError;
 use crate::models::market_data::MarketData;
 use crate::models::order::{Order, OrderStatus};
 use crate::models::trade::Trade;
 use crate::core::strategy_manager::StrategyManager;
 use crate::exchange::traits::Exchange;
-use crate::exchange::mock::MockExchange;
+use crate::exchange::mocks::MockExchange;
+use crate::strategies::traits::Strategy;
 use super::result::BacktestResult;
+use super::data_provider::HistoricalDataProvider;
 
+/// 백테스트 엔진 - 전략 백테스팅을 위한 코어 컴포넌트
 pub struct BacktestEngine {
+    name: String,
+    description: String,
     start_time: DateTime<Utc>,
     end_time: DateTime<Utc>,
     market_data: HashMap<String, Vec<MarketData>>,
-    strategies: StrategyManager,
+    strategy_manager: StrategyManager,
     exchange: MockExchange,
     initial_balance: HashMap<String, f64>,
+    fee_rate: f64,
+    slippage: f64,
+    data_provider: Option<HistoricalDataProvider>,
 }
 
 impl BacktestEngine {
+    /// 새로운 백테스트 엔진 생성
     pub fn new(
+        name: String,
+        description: String,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
         initial_balance: HashMap<String, f64>,
+        fee_rate: f64,
+        slippage: f64,
     ) -> Self {
-        let exchange = MockExchange::new(initial_balance.clone());
+        // 모의 거래소 생성 및 초기 잔고 설정
+        let mut exchange_config = crate::config::Config::default();
+        exchange_config.exchange.initial_balance = initial_balance.clone();
+        exchange_config.exchange.fee_rate = fee_rate;
+        exchange_config.exchange.slippage = slippage;
+        
+        let exchange = MockExchange::new(exchange_config);
         
         BacktestEngine {
+            name,
+            description,
             start_time,
             end_time,
             market_data: HashMap::new(),
-            strategies: StrategyManager::new(),
+            strategy_manager: StrategyManager::new(),
             exchange,
             initial_balance,
+            fee_rate,
+            slippage,
+            data_provider: None,
         }
     }
     
-    // 시장 데이터 추가
+    /// 시장 데이터 직접 추가
     pub fn add_market_data(&mut self, symbol: &str, data: Vec<MarketData>) {
         self.market_data.insert(symbol.to_string(), data);
     }
     
-    // 전략 추가
-    pub fn add_strategy(&mut self, strategy: Box<dyn crate::strategies::traits::Strategy>) -> Result<(), TradingError> {
-        self.strategies.add_strategy(strategy)
+    /// 데이터 제공자 설정
+    pub fn set_data_provider(&mut self, provider: HistoricalDataProvider) {
+        self.data_provider = Some(provider);
     }
     
-    // 백테스트 실행
-    pub fn run(&mut self) -> Result<BacktestResult, TradingError> {
+    /// 전략 추가
+    pub fn add_strategy(&mut self, strategy: Box<dyn Strategy>) -> Result<(), TradingError> {
+        self.strategy_manager.add_strategy(strategy)
+    }
+    
+    /// 백테스트 실행
+    pub async fn run(&mut self) -> Result<BacktestResult, TradingError> {
         // 데이터 로드 확인
         if self.market_data.is_empty() {
-            return Err(TradingError::InsufficientData);
+            if let Some(provider) = &self.data_provider {
+                // 데이터 제공자를 통해 시장 데이터 로드
+                for symbol in provider.available_symbols() {
+                    let data = provider.load_data(
+                        &symbol,
+                        self.start_time,
+                        self.end_time,
+                    ).await?;
+                    
+                    self.market_data.insert(symbol, data);
+                }
+            } else {
+                return Err(TradingError::InsufficientData);
+            }
         }
         
         // 시간 기준으로 정렬된 데이터 인덱스 만들기
@@ -81,18 +126,21 @@ impl BacktestEngine {
             current_time = time;
             
             // 현재 시장 데이터 가져오기
-            if let Some(data) = self.get_market_data(&symbol, time) {
-                // 전략 업데이트
-                self.strategies.update_all(&data)?;
+            if let Some(data) = self.get_market_data(&symbol, time)? {
+                // 모든 전략 업데이트
+                self.strategy_manager.update_all(&data)?;
                 
                 // 주문 생성 및 처리
-                let orders = self.strategies.get_all_orders()?;
+                let orders = self.strategy_manager.get_all_orders()?;
                 for order in orders {
-                    self.exchange.place_order(order)?;
+                    self.process_order(order, time)?;
                 }
                 
-                // 주문 실행 (모의 거래소 업데이트)
-                self.exchange.update(time, &data)?;
+                // 미결제 주문 처리
+                self.process_pending_orders(time)?;
+                
+                // 거래소 상태 갱신
+                self.exchange.update_market_data(&data);
             }
         }
         
@@ -103,9 +151,15 @@ impl BacktestEngine {
         let fee_paid = trades.iter().map(|t| t.fee).sum();
         
         let profit = final_value - initial_value;
-        let profit_percentage = (profit / initial_value) * 100.0;
+        let profit_percentage = if initial_value > 0.0 {
+            (profit / initial_value) * 100.0
+        } else {
+            0.0
+        };
         
         Ok(BacktestResult {
+            name: self.name.clone(),
+            description: self.description.clone(),
             start_time: self.start_time,
             end_time: current_time,
             initial_balance: self.initial_balance.clone(),
@@ -116,19 +170,32 @@ impl BacktestEngine {
             profit_percentage,
             trades,
             fee_paid,
+            symbols: self.market_data.keys().cloned().collect(),
         })
     }
     
     // 특정 시간의 시장 데이터 가져오기
-    fn get_market_data(&self, symbol: &str, time: DateTime<Utc>) -> Option<MarketData> {
+    fn get_market_data(&self, symbol: &str, time: DateTime<Utc>) -> Result<Option<MarketData>, TradingError> {
         if let Some(data_series) = self.market_data.get(symbol) {
             // 정확한 시간 또는 가장 가까운 이전 데이터 찾기
-            data_series.iter()
+            let matching_data = data_series.iter()
               .filter(|data| data.timestamp <= time)
               .max_by_key(|data| data.timestamp)
-              .cloned()
+              .cloned();
+            
+            Ok(matching_data)
         } else {
-            None
+            Ok(None)
         }
+    }
+    
+    // 주문 처리
+    fn process_order(&mut self, order: Order, time: DateTime<Utc>) -> Result<(), TradingError> {
+        self.exchange.place_order(order)
+    }
+    
+    // 미결제 주문 처리
+    fn process_pending_orders(&mut self, time: DateTime<Utc>) -> Result<(), TradingError> {
+        self.exchange.process_pending_orders(time)
     }
 }

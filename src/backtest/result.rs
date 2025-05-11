@@ -1,12 +1,16 @@
 use std::collections::HashMap;
+use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 
 use crate::models::trade::Trade;
+use super::performance::PerformanceMetrics;
 
-
+/// 백테스트 결과 - 백테스트 실행 결과를 저장하고 분석
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BacktestResult {
+    pub name: String,
+    pub description: String,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
     pub initial_balance: HashMap<String, f64>,
@@ -17,161 +21,128 @@ pub struct BacktestResult {
     pub profit_percentage: f64,
     pub trades: Vec<Trade>,
     pub fee_paid: f64,
+    pub symbols: Vec<String>,
 }
 
 impl BacktestResult {
-    /// 거래 수 계산
+    /// 거래 횟수 반환
     pub fn trade_count(&self) -> usize {
         self.trades.len()
     }
-
+    
+    /// 승리 거래 수 반환
+    pub fn winning_trades(&self) -> usize {
+        self.trades.iter()
+          .filter(|t| t.realized_pnl > 0.0)
+          .count()
+    }
+    
+    /// 패배 거래 수 반환
+    pub fn losing_trades(&self) -> usize {
+        self.trades.iter()
+          .filter(|t| t.realized_pnl < 0.0)
+          .count()
+    }
+    
     /// 승률 계산
     pub fn win_rate(&self) -> f64 {
         if self.trades.is_empty() {
             return 0.0;
         }
-
-        let mut winning_trades = 0;
-        let mut losing_trades = 0;
-
-        // 각 거래별 이익/손실 계산
-        for trade in &self.trades {
-            let profit = self.calculate_trade_profit(trade);
-
-            if profit > 0.0 {
-                winning_trades += 1;
-            } else if profit < 0.0 {
-                losing_trades += 1;
-            }
-        }
-
-        let total_trades = winning_trades + losing_trades;
-        if total_trades == 0 {
-            return 0.0;
-        }
-
-        (winning_trades as f64 / total_trades as f64) * 100.0
+        
+        (self.winning_trades() as f64 / self.trades.len() as f64) * 100.0
     }
-
-    /// 최대 이익 거래 계산
-    pub fn max_profit_trade(&self) -> Option<(&Trade, f64)> {
-        if self.trades.is_empty() {
-            return None;
-        }
-
-        let mut max_profit = 0.0;
-        let mut max_profit_trade = None;
-
-        for trade in &self.trades {
-            let profit = self.calculate_trade_profit(trade);
-
-            if profit > max_profit {
-                max_profit = profit;
-                max_profit_trade = Some((trade, profit));
-            }
-        }
-
-        max_profit_trade
-    }
-
-    /// 최대 손실 거래 계산
-    pub fn max_loss_trade(&self) -> Option<(&Trade, f64)> {
-        if self.trades.is_empty() {
-            return None;
-        }
-
-        let mut max_loss = 0.0;
-        let mut max_loss_trade = None;
-
-        for trade in &self.trades {
-            let profit = self.calculate_trade_profit(trade);
-
-            if profit < max_loss {
-                max_loss = profit;
-                max_loss_trade = Some((trade, profit));
-            }
-        }
-
-        max_loss_trade
-    }
-
-    /// 거래당 평균 이익/손실 계산
+    
+    /// 평균 거래당 수익 계산
     pub fn average_profit_per_trade(&self) -> f64 {
         if self.trades.is_empty() {
             return 0.0;
         }
-
-        let total_profit: f64 = self.trades.iter()
-            .map(|trade| self.calculate_trade_profit(trade))
-            .sum();
-
-        total_profit / self.trades.len() as f64
+        
+        let total_pnl: f64 = self.trades.iter()
+          .map(|t| t.realized_pnl)
+          .sum();
+        
+        total_pnl / self.trades.len() as f64
     }
-
-    /// 샤프 비율 계산 (간단한 구현)
+    
+    /// 최대 수익 거래 찾기
+    pub fn max_profit_trade(&self) -> Option<(&Trade, f64)> {
+        self.trades.iter()
+          .filter(|t| t.realized_pnl > 0.0)
+          .map(|t| (t, t.realized_pnl))
+          .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+    }
+    
+    /// 최대 손실 거래 찾기
+    pub fn max_loss_trade(&self) -> Option<(&Trade, f64)> {
+        self.trades.iter()
+          .filter(|t| t.realized_pnl < 0.0)
+          .map(|t| (t, t.realized_pnl))
+          .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+    }
+    
+    /// 샤프 비율 계산
     pub fn sharpe_ratio(&self) -> f64 {
-        if self.trades.len() < 2 {
+        PerformanceMetrics::calculate_sharpe_ratio(&self.trades, self.initial_value)
+    }
+    
+    /// 최대 손실폭 계산
+    pub fn max_drawdown(&self) -> f64 {
+        PerformanceMetrics::calculate_max_drawdown(&self.trades, self.initial_value)
+    }
+    
+    /// 수익 대 위험 비율 계산
+    pub fn profit_factor(&self) -> f64 {
+        PerformanceMetrics::calculate_profit_factor(&self.trades)
+    }
+    
+    /// 연간 복합 수익률 계산
+    pub fn car(&self) -> f64 {
+        let days = (self.end_time - self.start_time).num_days() as f64;
+        
+        if days <= 0.0 || self.initial_value <= 0.0 {
             return 0.0;
         }
-
-        // 일별 수익률 계산 (거래 기반)
-        let profits: Vec<f64> = self.trades.iter()
-            .map(|trade| self.calculate_trade_profit(trade))
-            .collect();
-
-        // 평균 수익률
-        let mean = profits.iter().sum::<f64>() / profits.len() as f64;
-
-        // 표준 편차
-        let variance = profits.iter()
-            .map(|profit| (profit - mean).powi(2))
-            .sum::<f64>() / (profits.len() as f64 - 1.0);
-
-        let std_dev = variance.sqrt();
-
-        if std_dev == 0.0 {
-            return 0.0;
-        }
-
-        // 무위험 이자율 (예: 0%)
-        let risk_free_rate = 0.0;
-
-        // 샤프 비율
-        (mean - risk_free_rate) / std_dev
+        
+        let years = days / 365.0;
+        ((self.final_value / self.initial_value).powf(1.0 / years)) - 1.0
     }
-
-    /// 개별 거래 이익/손실 계산 (단순화된 구현)
-    fn calculate_trade_profit(&self, trade: &Trade) -> f64 {
-        // 실제로는 이전 거래와 현재 잔고를 고려해야 함
-        // 여기서는 단순 구현
-        match trade.side {
-            crate::models::order::OrderSide::Buy => 0.0, // 매수는 포지션 진입으로 간주
-            crate::models::order::OrderSide::Sell => trade.price * trade.quantity, // 매도는 이익 실현으로 간주
-        }
-    }
-
+    
     /// 결과 요약 문자열 생성
     pub fn summary(&self) -> String {
-        format!(
-            "백테스트 결과 요약:\n\
-             기간: {} ~ {}\n\
-             초기 가치: {:.2} USDT\n\
-             최종 가치: {:.2} USDT\n\
-             이익: {:.2} USDT ({:.2}%)\n\
-             거래 횟수: {}\n\
-             승률: {:.2}%\n\
-             수수료 총액: {:.2} USDT\n\
-             샤프 비율: {:.2}",
-            self.start_time.format("%Y-%m-%d %H:%M:%S"),
-            self.end_time.format("%Y-%m-%d %H:%M:%S"),
-            self.initial_value,
-            self.final_value,
-            self.profit,
-            self.profit_percentage,
-            self.trade_count(),
-            self.win_rate(),
-            self.fee_paid,
-            self.sharpe_ratio()
-        )
+        let mut summary = String::new();
+        
+        summary.push_str(&format!("===== 백테스트 결과: {} =====\n", self.name));
+        summary.push_str(&format!("설명: {}\n", self.description));
+        summary.push_str(&format!("기간: {} ~ {}\n", self.start_time, self.end_time));
+        summary.push_str(&format!("심볼: {}\n", self.symbols.join(", ")));
+        summary.push_str("\n");
+        
+        summary.push_str(&format!("초기 자산가치: ${:.2}\n", self.initial_value));
+        summary.push_str(&format!("최종 자산가치: ${:.2}\n", self.final_value));
+        summary.push_str(&format!("순이익: ${:.2} ({:.2}%)\n", self.profit, self.profit_percentage));
+        summary.push_str(&format!("지불 수수료: ${:.2}\n", self.fee_paid));
+        summary.push_str("\n");
+        
+        summary.push_str(&format!("총 거래 수: {}\n", self.trade_count()));
+        summary.push_str(&format!("승리 거래: {}\n", self.winning_trades()));
+        summary.push_str(&format!("패배 거래: {}\n", self.losing_trades()));
+        summary.push_str(&format!("승률: {:.2}%\n", self.win_rate()));
+        summary.push_str(&format!("평균 거래당 수익: ${:.2}\n", self.average_profit_per_trade()));
+        summary.push_str("\n");
+        
+        summary.push_str(&format!("샤프 비율: {:.4}\n", self.sharpe_ratio()));
+        summary.push_str(&format!("최대 손실폭: {:.2}%\n", self.max_drawdown() * 100.0));
+        summary.push_str(&format!("수익/위험 비율: {:.2}\n", self.profit_factor()));
+        summary.push_str(&format!("연간 복합 수익률: {:.2}%\n", self.car() * 100.0));
+        
+        summary
+    }
+}
+
+impl fmt::Display for BacktestResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.summary())
     }
 }

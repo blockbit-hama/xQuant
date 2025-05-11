@@ -5,9 +5,6 @@
 * description: 
 **/
 
-//! 백테스트 관련 테스트
-//!
-//! 백테스트 엔진 및 시나리오 테스트
 
 use std::collections::HashMap;
 use chrono::{Duration, Utc};
