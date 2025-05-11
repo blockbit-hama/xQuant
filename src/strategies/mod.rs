@@ -1,12 +1,9 @@
-//! 트레이딩 전략 모듈
-//!
-//! 다양한 트레이딩 전략 및 인터페이스 정의
-
 pub mod vwap;
 pub mod iceberg;
 pub mod trailing_stop;
 pub mod twap;
 pub mod combined;
+mod technical;
 
 use async_trait::async_trait;
 

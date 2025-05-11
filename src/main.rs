@@ -2,7 +2,7 @@
 * filename : lib
 * author : HAMA
 * date: 2025. 5. 8.
-* description: 
+* description:
 **/
 
 mod api;
@@ -15,7 +15,7 @@ mod market_data;
 mod models;
 mod order_core;
 mod strategies;
-mod utils; 
+mod utils;
 
 use std::collections::HashMap;
 use std::sync::Arc;

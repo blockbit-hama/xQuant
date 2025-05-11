@@ -6,3 +6,4 @@ pub mod trailing_stop_manager;
 pub mod twap_splitter;
 pub mod risk_manager;
 pub mod execution_analyzer;
+mod strategy_manager;

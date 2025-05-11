@@ -13,6 +13,7 @@ pub mod models;
 pub mod order_core;
 pub mod strategies;
 pub mod utils;
+mod trading_bots;
 
 // 핵심 타입 재노출
 pub use crate::error::TradingError;
