@@ -13,7 +13,12 @@ pub mod models;
 pub mod order_core;
 pub mod strategies;
 pub mod utils;
-mod trading_bots;
+pub mod trading_bots;
+// Python 예측 시스템 통신 모듈
+pub mod prediction_client;
+// TA 모듈 공개
+pub mod indicators;
+pub mod signals;
 
 // 핵심 타입 재노출
 pub use crate::error::TradingError;

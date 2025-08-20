@@ -83,7 +83,7 @@ impl TradingBot for MultiIndicatorBot {
   fn update(&mut self, market_data: &MarketData) -> Result<(), TradingError> {
     // 모든 지표 업데이트
     for indicator in &mut self.indicators {
-      indicator.update(market_data.close_price, Some(market_data.volume))?;
+      indicator.update(market_data.close, Some(market_data.volume))?;
     }
     
     // 각 지표의 결과 계산

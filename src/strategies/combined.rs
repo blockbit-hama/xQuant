@@ -2,7 +2,7 @@ use crate::error::TradingError;
 use crate::models::market_data::MarketData;
 use crate::models::order::{Order, OrderId, OrderSide, OrderType};
 use crate::signals::signal_types::SignalType;
-use super::traits::Strategy;
+use crate::strategies::Strategy;
 use super::technical::TechnicalStrategy;
 
 // TA 기반 신호 생성 + 알고리즘 실행 최적화를 결합한 전략
@@ -134,7 +134,7 @@ impl Strategy for CombinedStrategy {
     Ok(())
   }
   
-  fn get_orders(&self) -> Result<Vec<Order>, TradingError> {
+  fn get_orders(&mut self) -> Result<Vec<Order>, TradingError> {
     if !self.is_active {
       return Ok(vec![]);
     }

@@ -52,7 +52,7 @@ impl RSIBot {
 impl TradingBot for RSIBot {
   fn update(&mut self, market_data: &MarketData) -> Result<(), TradingError> {
     // 현재 시장 데이터로 지표 업데이트
-    self.rsi.update(market_data.close_price, Some(market_data.volume))?;
+    self.rsi.update(market_data.close, Some(market_data.volume))?;
     
     // 신호 평가
     if self.rsi.is_ready() {

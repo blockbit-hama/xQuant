@@ -18,7 +18,7 @@ pub fn create_routes(
     // 헬스체크 라우트
     let health = warp::path("health")
       .and(warp::get())
-      .and_then(handlers::health_handler);
+      .map(|| warp::reply::json(&serde_json::json!({"status":"ok"})));
     
     // 상태 필터 생성
     let exchange_filter = warp::any().map(move || exchange.clone());
