@@ -69,16 +69,62 @@ pub async fn create_ta_strategy(
       let oversold = req.params["oversold"].as_f64().unwrap_or(30.0);
       let overbought = req.params["overbought"].as_f64().unwrap_or(70.0);
       let duration_minutes = req.params["duration_minutes"].as_u64().unwrap_or(60);
-      
-      CombinedStrategy::rsi_twap(req.symbol, period, oversold, overbought, duration_minutes)
+      // Combined 전략은 즉시 추가/응답 반환(타입 정합성 위해 여기서 처리)
+      return match CombinedStrategy::rsi_twap(req.symbol, period, oversold, overbought, duration_minutes) {
+        Ok(strategy) => {
+          let strategy_name = strategy.name().to_string();
+          let mut manager = strategy_manager.write().await;
+          match manager.add_strategy(Box::new(strategy)) {
+            Ok(_) => {
+              let response = serde_json::json!({
+                "status": "success",
+                "message": "Strategy created successfully",
+                "strategy_name": strategy_name
+              });
+              Ok(with_status(json(&response), StatusCode::CREATED))
+            }
+            Err(e) => {
+              let error_response = serde_json::json!({"error": format!("Failed to add strategy: {}", e)});
+              Ok(with_status(json(&error_response), StatusCode::INTERNAL_SERVER_ERROR))
+            }
+          }
+        }
+        Err(e) => {
+          let error_response = serde_json::json!({"error": format!("Failed to create strategy: {}", e)});
+          Ok(with_status(json(&error_response), StatusCode::BAD_REQUEST))
+        }
+      };
     },
     "macd_vwap" => {
       let fast_period = req.params["fast_period"].as_u64().unwrap_or(12) as usize;
       let slow_period = req.params["slow_period"].as_u64().unwrap_or(26) as usize;
       let signal_period = req.params["signal_period"].as_u64().unwrap_or(9) as usize;
       let participation_rate = req.params["participation_rate"].as_f64().unwrap_or(0.1);
-      
-      CombinedStrategy::macd_vwap(req.symbol, fast_period, slow_period, signal_period, participation_rate)
+      // Combined 전략은 즉시 추가/응답 반환
+      return match CombinedStrategy::macd_vwap(req.symbol, fast_period, slow_period, signal_period, participation_rate) {
+        Ok(strategy) => {
+          let strategy_name = strategy.name().to_string();
+          let mut manager = strategy_manager.write().await;
+          match manager.add_strategy(Box::new(strategy)) {
+            Ok(_) => {
+              let response = serde_json::json!({
+                "status": "success",
+                "message": "Strategy created successfully",
+                "strategy_name": strategy_name
+              });
+              Ok(with_status(json(&response), StatusCode::CREATED))
+            }
+            Err(e) => {
+              let error_response = serde_json::json!({"error": format!("Failed to add strategy: {}", e)});
+              Ok(with_status(json(&error_response), StatusCode::INTERNAL_SERVER_ERROR))
+            }
+          }
+        }
+        Err(e) => {
+          let error_response = serde_json::json!({"error": format!("Failed to create strategy: {}", e)});
+          Ok(with_status(json(&error_response), StatusCode::BAD_REQUEST))
+        }
+      };
     },
     _ => Err(crate::error::TradingError::InvalidStrategy(format!("Unknown strategy type: {}", req.strategy_type))),
   };
