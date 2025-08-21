@@ -460,7 +460,7 @@ pub async fn calculate_backtest_performance(
       // 백테스트 시나리오 생성
       let mut builder = BacktestScenarioBuilder::new(format!("{} 백테스트", req.strategy_type))
         .description(format!("{} 기반 백테스트", req.strategy_type))
-        .data_file(data_file)
+        .data_file(data_file.into())
         .period(start_time, end_time)
         .initial_balance("USDT", 10000.0)
         .fee_rate(0.001)

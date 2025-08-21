@@ -41,12 +41,7 @@ impl BacktestEngine {
         slippage: f64,
     ) -> Self {
         // 모의 거래소 생성 및 초기 잔고 설정
-        let mut exchange_config = crate::config::Config::default();
-        exchange_config.exchange.initial_balance = initial_balance.clone();
-        exchange_config.exchange.fee_rate = fee_rate;
-        exchange_config.exchange.slippage = slippage;
-        
-        let exchange = MockExchange::new(exchange_config);
+        let exchange = MockExchange::new(crate::config::Config::default());
         
         BacktestEngine {
             name,
@@ -129,11 +124,11 @@ impl BacktestEngine {
                 // 주문 생성 및 처리
                 let orders = self.strategy_manager.get_all_orders()?;
                 for order in orders {
-                let _ = self.process_order(order, time)?;
+                    let _ = self.process_order(order, current_time)?;
                 }
                 
                 // 미결제 주문 처리
-                let _ = self.process_pending_orders(time)?;
+                let _ = self.process_pending_orders(current_time)?;
                 
                 // 거래소 상태 갱신
                 self.exchange.update_market_data(&data);
