@@ -24,6 +24,7 @@ pub struct Config {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    pub api_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +86,7 @@ impl Config {
             if ["1","true","yes"].contains(&lower.as_str()) { self.exchange.use_mock = true; }
             if ["0","false","no"].contains(&lower.as_str()) { self.exchange.use_mock = false; }
         }
+        if let Ok(v) = env::var("API_TOKEN") { if !v.is_empty() { self.server.api_token = Some(v); } }
     }
 }
 
@@ -94,6 +96,7 @@ impl Default for Config {
             server: ServerConfig {
                 host: "127.0.0.1".to_string(),
                 port: 3030,
+                api_token: None,
             },
             exchange: ExchangeConfig {
                 name: "Mock".to_string(),

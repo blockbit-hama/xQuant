@@ -7,6 +7,8 @@ use crate::config::Config;
 use crate::exchange::traits::Exchange;
 use crate::order_core::manager::OrderManager;
 use crate::core::strategy_manager::StrategyManager;  // 추가됨
+use warp::{reject::Reject, http::StatusCode, Rejection, Reply};
+use warp::reply::{with_status, json};
 
 /// 트레이딩 시스템의 API 라우트 생성
 pub fn create_routes(
@@ -24,8 +26,55 @@ pub fn create_routes(
     let exchange_filter = warp::any().map(move || exchange.clone());
     let order_manager_filter = warp::any().map(move || order_manager.clone());
     let strategy_manager_filter = warp::any().map(move || strategy_manager.clone());  // 추가됨
-    let config_filter = warp::any().map(move || config.clone());
+    let config_clone = config.clone();
+    let config_filter = warp::any().map(move || config_clone.clone());
+    let token_opt2 = config.server.api_token.clone();
+    let auth = warp::header::optional::<String>("authorization").and_then(move |auth_header: Option<String>| {
+        let expected = token_opt2.clone();
+        async move {
+            if let Some(exp) = expected {
+                let good = auth_header
+                  .and_then(|h| h.strip_prefix("Bearer ").map(|s| s.to_string()))
+                  .map(|bearer| bearer == exp)
+                  .unwrap_or(false);
+                if good { Ok(()) } else { Err(warp::reject::custom(Unauthorized)) }
+            } else {
+                Ok(())
+            }
+        }
+    });
     
+    // 간단 토큰 인증 필터 (옵션)
+    #[derive(Debug)]
+    struct Unauthorized;
+    impl Reject for Unauthorized {}
+
+    let token_opt = config.server.api_token.clone();
+    let auth = warp::header::optional::<String>("authorization").and_then(move |auth_header: Option<String>| {
+        let expected = token_opt.clone();
+        async move {
+            if let Some(exp) = expected {
+                let good = auth_header
+                  .and_then(|h| h.strip_prefix("Bearer ").map(|s| s.to_string()))
+                  .map(|bearer| bearer == exp)
+                  .unwrap_or(false);
+                if good { Ok(()) } else { Err(warp::reject::custom(Unauthorized)) }
+            } else {
+                Ok(())
+            }
+        }
+    });
+
+    async fn handle_rejection(err: Rejection) -> Result<impl Reply, std::convert::Infallible> {
+        if err.find::<Unauthorized>().is_some() {
+            let body = json(&serde_json::json!({"error":"unauthorized"}));
+            return Ok(with_status(body, StatusCode::UNAUTHORIZED));
+        }
+        // default internal error
+        let body = json(&serde_json::json!({"error":"internal"}));
+        Ok(with_status(body, StatusCode::INTERNAL_SERVER_ERROR))
+    }
+
     // 주문 관리 라우트
     let orders = warp::path("orders");
     
