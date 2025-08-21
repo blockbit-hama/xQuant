@@ -95,7 +95,7 @@ impl BacktestEngine {
         }
         
         // 시간 기준으로 정렬된 데이터 인덱스 만들기
-        let mut timeline: Vec<(DateTime<Utc>, String)> = Vec::new();
+        let mut timeline: Vec<(i64, String)> = Vec::new();
         
         for (symbol, data_series) in &self.market_data {
             for data in data_series {
@@ -109,7 +109,7 @@ impl BacktestEngine {
         // 필터링된 타임라인 (시작-종료 시간 내)
         let filtered_timeline: Vec<_> = timeline
           .into_iter()
-          .filter(|(time, _)| *time >= self.start_time && *time <= self.end_time)
+          .filter(|(time, _)| *time >= self.start_time.timestamp_millis() && *time <= self.end_time.timestamp_millis())
           .collect();
         
         // 초기 포트폴리오 가치 계산
@@ -118,11 +118,11 @@ impl BacktestEngine {
         // 시간에 따라 시뮬레이션 실행
         let mut current_time = self.start_time;
         
-        for (time, symbol) in filtered_timeline {
-            current_time = time;
+        for (time_ms, symbol) in filtered_timeline {
+            current_time = DateTime::<Utc>::from_timestamp_millis(time_ms).unwrap_or(self.start_time);
             
             // 현재 시장 데이터 가져오기
-            if let Some(data) = self.get_market_data(&symbol, time)? {
+            if let Some(data) = self.get_market_data(&symbol, current_time)? {
                 // 모든 전략 업데이트
                 self.strategy_manager.update_all(&data)?;
                 

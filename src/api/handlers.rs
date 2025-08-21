@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 use crate::exchange::traits::Exchange;
 use crate::indicators::Indicator;
 use crate::trading_bots::bot_config::TradingBotConfig;
+use crate::strategies::Strategy;
 use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
 use crate::core::strategy_manager::StrategyManager;

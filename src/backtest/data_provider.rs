@@ -44,7 +44,7 @@ impl HistoricalDataProvider for CsvDataProvider {
         let mut rdr = csv::ReaderBuilder::new()
             .delimiter(self.delimiter)
             .from_path(&self.path)
-            .map_err(|e| TradingError::IoError(e.to_string()))?;
+            .map_err(|e| TradingError::IoError(e.into()))?;
 
         let mut result = Vec::new();
         for rec in rdr.deserialize() {
