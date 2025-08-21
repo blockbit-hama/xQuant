@@ -45,7 +45,7 @@ use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
 use crate::core::strategy_manager::StrategyManager;
 use crate::exchange::traits::Exchange;
-use crate::prediction_client::PredictionClient;
+use crate::prediction_client::{PredictionClient, SignalRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -118,6 +118,18 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
       Ok(true) => log::info!("Prediction API healthy: {}", config.prediction_api.base_url),
       Ok(false) => log::warn!("Prediction API unhealthy: {}", config.prediction_api.base_url),
       Err(e) => log::warn!("Prediction API check failed: {}", e),
+    }
+
+    // 샘플 시그널 1회 호출(실패해도 무시)
+    let sample_req = SignalRequest {
+      symbol: "BTC/USDT".to_string(),
+      timeframe: "1h".to_string(),
+      strategy: "trend_following".to_string(),
+      lookback: 100,
+    };
+    match pred.get_signals(sample_req).await {
+      Ok(sig) => log::info!("Sample signal: {} (conf {:.2})", sig.signal, sig.confidence),
+      Err(e) => log::warn!("Sample signal fetch failed: {}", e),
     }
   }
 
