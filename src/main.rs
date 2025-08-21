@@ -97,7 +97,14 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   } else {
     Arc::new(RwLock::new(MockExchange::new(config.clone())))
   };
-  log::info!("모의 거래소 초기화 완료");
+  log::info!("거래소 초기화 완료 (mock: {})", config.exchange.use_mock);
+
+  // 선물 기본 설정(실거래 사용 시): 레버리지/포지션모드/마진모드 적용
+  if !config.exchange.use_mock {
+    if let Err(e) = init_futures_defaults(exchange.clone(), vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()], 20, /*isolated*/ false, /*hedge*/ false).await {
+      log::warn!("futures defaults init failed: {}", e);
+    }
+  }
   
   // 주문 저장소 생성
   let order_repo = Arc::new(RwLock::new(InMemoryOrderRepository::new()));
@@ -232,6 +239,30 @@ async fn setup_technical_strategies(
   
   // 시장 데이터 스트림 연결은 추후 구현 예정
   
+  Ok(())
+}
+
+// 선물 기본설정: 심볼별 레버리지/마진모드, 계정 포지션모드 적용
+async fn init_futures_defaults(
+  exchange: Arc<RwLock<dyn Exchange>>,
+  symbols: Vec<String>,
+  leverage: u32,
+  isolated: bool,
+  hedge: bool,
+) -> Result<(), anyhow::Error> {
+  {
+    let mut ex = exchange.write().await;
+    // 포지션 모드(dualSidePosition): false=One-way, true=Hedge
+    ex.set_futures_position_mode(hedge).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+  }
+
+  for symbol in symbols {
+    let mut ex = exchange.write().await;
+    ex.set_futures_margin_mode(&symbol, isolated).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    ex.set_futures_leverage(&symbol, leverage).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    log::info!("Applied futures settings: symbol={}, isolated={}, leverage={}, hedge={}", symbol, isolated, leverage, hedge);
+  }
+
   Ok(())
 }
 
