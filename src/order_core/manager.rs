@@ -68,9 +68,23 @@ impl OrderManager {
             match submit_res {
                 Ok(oid) => { order_id = Some(oid); break; }
                 Err(e) => {
+                    // Special handling for common exchange errors: time drift, rate limit
+                    let err_str = format!("{}", e);
+                    if err_str.contains("-1021") || err_str.to_lowercase().contains("timestamp") {
+                        // sync time and retry quickly
+                        {
+                            let mut ex = self.exchange.write().await;
+                            let _ = ex.sync_time().await;
+                        }
+                    }
+                    // simple backoff (aggressive if rate limit)
+                    let mut backoff_ms = 200u64.saturating_mul(2u64.pow(attempt));
+                    if err_str.contains("429") || err_str.to_lowercase().contains("too many") {
+                        backoff_ms = backoff_ms.max(1000);
+                    }
+
                     last_err = Some(e);
                     if attempt == max_retries { break; }
-                    let backoff_ms = 200u64.saturating_mul(2u64.pow(attempt));
                     tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                     attempt += 1;
                     continue;
