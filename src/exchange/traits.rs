@@ -43,4 +43,13 @@ pub trait Exchange: Send + Sync {
 
     /// Get account balance
     async fn get_balance(&self, asset: &str) -> Result<f64, TradingError>;
+
+    /// Optional: set futures leverage for a symbol (default no-op)
+    async fn set_futures_leverage(&mut self, _symbol: &str, _leverage: u32) -> Result<(), TradingError> { Ok(()) }
+
+    /// Optional: set position mode (hedge=true for dual side). Default no-op
+    async fn set_futures_position_mode(&mut self, _hedge: bool) -> Result<(), TradingError> { Ok(()) }
+
+    /// Optional: set margin mode for a symbol (isolated=true). Default no-op
+    async fn set_futures_margin_mode(&mut self, _symbol: &str, _isolated: bool) -> Result<(), TradingError> { Ok(()) }
 }

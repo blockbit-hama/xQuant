@@ -162,4 +162,38 @@ impl Exchange for BinanceFuturesExchange {
   }
 
   async fn get_balance(&self, _asset: &str) -> Result<f64, TradingError> { Ok(0.0) }
+
+  async fn set_futures_leverage(&mut self, symbol: &str, leverage: u32) -> Result<(), TradingError> {
+    let ts = Self::timestamp_ms();
+    let q = format!("symbol={}&leverage={}&timestamp={}&recvWindow={}", symbol, leverage, ts, self.recv_window_ms);
+    let url = format!("{}/fapi/v1/leverage?{}&signature={}", self.base_url, q, self.sign(&q));
+    self.throttle().await;
+    let res = self.http.post(url).header("X-MBX-APIKEY", &self.api_key).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("set leverage http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("set leverage failed: {}", res.status()))); }
+    Ok(())
+  }
+
+  async fn set_futures_position_mode(&mut self, hedge: bool) -> Result<(), TradingError> {
+    let ts = Self::timestamp_ms();
+    let q = format!("dualSidePosition={}&timestamp={}&recvWindow={}", if hedge {"true"} else {"false"}, ts, self.recv_window_ms);
+    let url = format!("{}/fapi/v1/positionSide/dual?{}&signature={}", self.base_url, q, self.sign(&q));
+    self.throttle().await;
+    let res = self.http.post(url).header("X-MBX-APIKEY", &self.api_key).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("set position mode http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("set position mode failed: {}", res.status()))); }
+    Ok(())
+  }
+
+  async fn set_futures_margin_mode(&mut self, symbol: &str, isolated: bool) -> Result<(), TradingError> {
+    // NOTE: Binance uses marginType=ISOLATED|CROSSED
+    let ts = Self::timestamp_ms();
+    let q = format!("symbol={}&marginType={}&timestamp={}&recvWindow={}", symbol, if isolated {"ISOLATED"} else {"CROSSED"}, ts, self.recv_window_ms);
+    let url = format!("{}/fapi/v1/marginType?{}&signature={}", self.base_url, q, self.sign(&q));
+    self.throttle().await;
+    let res = self.http.post(url).header("X-MBX-APIKEY", &self.api_key).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("set margin mode http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("set margin mode failed: {}", res.status()))); }
+    Ok(())
+  }
 }
