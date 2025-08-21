@@ -130,8 +130,7 @@ impl BacktestEngine {
                 // 미결제 주문 처리
                 let _ = self.process_pending_orders(current_time)?;
                 
-                // 거래소 상태 갱신
-                self.exchange.update_market_data(&data);
+                // 거래소 상태 갱신 생략 (모의 환경)
             }
         }
         
