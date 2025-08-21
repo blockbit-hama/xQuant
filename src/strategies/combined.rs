@@ -173,6 +173,11 @@ impl Strategy for CombinedStrategy {
     &self.name
   }
   
+  fn description(&self) -> &str {
+    // 간단 설명 반환
+    "Combined technical signal + execution strategy"
+  }
+  
   fn is_active(&self) -> bool {
     self.is_active
   }

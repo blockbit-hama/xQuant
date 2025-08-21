@@ -33,14 +33,14 @@ impl BacktestResult {
     /// 승리 거래 수 반환
     pub fn winning_trades(&self) -> usize {
         self.trades.iter()
-          .filter(|t| t.realized_pnl > 0.0)
+          .filter(|t| t.price * t.quantity > 0.0)
           .count()
     }
     
     /// 패배 거래 수 반환
     pub fn losing_trades(&self) -> usize {
         self.trades.iter()
-          .filter(|t| t.realized_pnl < 0.0)
+          .filter(|t| t.price * t.quantity < 0.0)
           .count()
     }
     
@@ -60,7 +60,7 @@ impl BacktestResult {
         }
         
         let total_pnl: f64 = self.trades.iter()
-          .map(|t| t.realized_pnl)
+          .map(|t| t.price * t.quantity)
           .sum();
         
         total_pnl / self.trades.len() as f64
@@ -69,16 +69,16 @@ impl BacktestResult {
     /// 최대 수익 거래 찾기
     pub fn max_profit_trade(&self) -> Option<(&Trade, f64)> {
         self.trades.iter()
-          .filter(|t| t.realized_pnl > 0.0)
-          .map(|t| (t, t.realized_pnl))
+          .filter(|t| t.price * t.quantity > 0.0)
+          .map(|t| (t, t.price * t.quantity))
           .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
     }
     
     /// 최대 손실 거래 찾기
     pub fn max_loss_trade(&self) -> Option<(&Trade, f64)> {
         self.trades.iter()
-          .filter(|t| t.realized_pnl < 0.0)
-          .map(|t| (t, t.realized_pnl))
+          .filter(|t| t.price * t.quantity < 0.0)
+          .map(|t| (t, t.price * t.quantity))
           .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
     }
     

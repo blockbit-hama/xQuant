@@ -108,6 +108,11 @@ impl Strategy for TechnicalStrategy {
     &self.name
   }
   
+  fn description(&self) -> &str {
+    // 이름을 설명으로 재사용(간단)
+    &self.name
+  }
+  
   fn is_active(&self) -> bool {
     self.is_active
   }
