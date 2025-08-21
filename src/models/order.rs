@@ -56,6 +56,9 @@ pub struct Order {
     pub trailing_delta: Option<f64>,        // For Trailing Stop orders
     pub execution_interval: Option<i64>,    // For TWAP/VWAP orders
     pub target_percentage: Option<f64>,     // For participation rate
+    // Futures-specific parameters
+    pub reduce_only: Option<bool>,          // Reduce-only flag
+    pub position_side: Option<String>,      // "BOTH"|"LONG"|"SHORT"
 }
 
 impl Order {
@@ -81,6 +84,8 @@ impl Order {
             trailing_delta: None,
             execution_interval: None,
             target_percentage: None,
+            reduce_only: None,
+            position_side: None,
         }
     }
 
@@ -121,6 +126,16 @@ impl Order {
     pub fn with_twap_params(mut self, execution_interval: i64) -> Self {
         self.execution_interval = Some(execution_interval);
         self.order_type = OrderType::TWAP;
+        self
+    }
+
+    pub fn with_reduce_only(mut self, ro: bool) -> Self {
+        self.reduce_only = Some(ro);
+        self
+    }
+
+    pub fn with_position_side(mut self, side: impl Into<String>) -> Self {
+        self.position_side = Some(side.into());
         self
     }
 }

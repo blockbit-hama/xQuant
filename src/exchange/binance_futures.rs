@@ -108,6 +108,9 @@ impl Exchange for BinanceFuturesExchange {
         if let Some(act) = order.stop_price { params.push(format!("activationPrice={}", act)); }
       }
     }
+    // futures flags: reduceOnly, positionSide
+    if let Some(ro) = order.reduce_only { if ro { params.push("reduceOnly=true".to_string()); } }
+    if let Some(ps) = &order.position_side { params.push(format!("positionSide={}", ps)); }
     let query = params.join("&");
     let signature = self.sign(&query);
     let url = format!("{}/fapi/v1/order?{}&signature={}", self.base_url, query, signature);
@@ -144,8 +147,8 @@ impl Exchange for BinanceFuturesExchange {
   }
 
   async fn get_market_data(&self, symbol: &str) -> Result<MarketData, TradingError> {
-    // Use 24hr ticker as a simple data source
-    let url = format!("{}/fapi/v1/ticker/24hr?symbol={}", self.base_url, symbol);
+    // Prefer book ticker for current price snapshot
+    let url = format!("{}/fapi/v1/ticker/bookTicker?symbol={}", self.base_url, symbol);
     self.throttle().await;
     let res = self.http.get(url)
       .send().await
@@ -154,10 +157,12 @@ impl Exchange for BinanceFuturesExchange {
     let json = res.json::<serde_json::Value>().await
       .map_err(|e| TradingError::ExchangeError(format!("market_data parse error: {}", e)))?;
     if !status.is_success() { return Err(TradingError::ExchangeError(format!("market_data failed: {}", status))); }
-    let close = json.get("lastPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-    let high = json.get("highPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(close);
-    let low = json.get("lowPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(close);
-    let volume = json.get("volume").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let bid = json.get("bidPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let ask = json.get("askPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(bid);
+    let close = if bid > 0.0 && ask > 0.0 { (bid + ask) / 2.0 } else { bid.max(ask) };
+    let high = close;
+    let low = close;
+    let volume = 0.0;
     Ok(MarketData { symbol: symbol.to_string(), timestamp: self.ts_with_offset(), open: close, high, low, close, volume })
   }
 
