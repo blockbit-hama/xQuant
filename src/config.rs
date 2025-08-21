@@ -18,6 +18,8 @@ pub struct Config {
     pub exchange: ExchangeConfig,
     pub logging: LoggingConfig,
     pub prediction_api: PredictionApiConfig,
+    #[serde(default)]
+    pub futures: Option<FuturesDefaults>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,20 @@ pub struct PredictionApiConfig {
     pub base_url: String,
     pub timeout_ms: Option<u64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FuturesDefaults {
+    #[serde(default)]
+    pub symbols: Vec<String>,
+    #[serde(default = "default_leverage")] 
+    pub leverage: u32,
+    #[serde(default)]
+    pub isolated: bool,
+    #[serde(default)]
+    pub hedge: bool,
+}
+
+fn default_leverage() -> u32 { 20 }
 
 impl Config {
     /// Load configuration from a file
@@ -113,6 +129,7 @@ impl Default for Config {
                 base_url: "http://127.0.0.1:8000".to_string(),
                 timeout_ms: Some(5000),
             },
+            futures: Some(FuturesDefaults { symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()], leverage: 20, isolated: false, hedge: false }),
         }
     }
 }

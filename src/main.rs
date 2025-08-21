@@ -106,7 +106,11 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
       let mut ex = exchange.write().await;
       if let Err(e) = ex.sync_time().await { log::warn!("time sync failed: {}", e); }
     }
-    if let Err(e) = init_futures_defaults(exchange.clone(), vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()], 20, /*isolated*/ false, /*hedge*/ false).await {
+    // 설정 기반 기본값 적용
+    let (symbols, lev, iso, hedge) = if let Some(f) = &config.futures {
+      (if f.symbols.is_empty() { vec!["BTCUSDT".into()] } else { f.symbols.clone() }, f.leverage, f.isolated, f.hedge)
+    } else { (vec!["BTCUSDT".into(), "ETHUSDT".into()], 20, false, false) };
+    if let Err(e) = init_futures_defaults(exchange.clone(), symbols, lev, iso, hedge).await {
       log::warn!("futures defaults init failed: {}", e);
     }
   }
