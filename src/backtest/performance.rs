@@ -63,7 +63,7 @@ impl PerformanceMetrics {
     }
     
     // 최대 손실폭 계산
-    let mut max_drawdown = 0.0;
+    let mut max_drawdown: f64 = 0.0;
     let mut peak = equity_curve[0];
     
     for &equity in &equity_curve {

@@ -33,7 +33,8 @@ pub trait TradingBot: Send + Sync {
   
   // 봇 이름 가져오기
   fn name(&self) -> &str {
-    &self.config().name
+    // config의 이름 필드를 공개하지 않으므로 기본 구현 제공
+    "TradingBot"
   }
 }
 

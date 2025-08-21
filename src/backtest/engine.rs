@@ -81,7 +81,7 @@ impl BacktestEngine {
                 // 데이터 제공자를 통해 시장 데이터 로드
                 let symbols = provider.available_symbols();
                 for symbol in symbols {
-                    let data = provider.load_data(&symbol, self.start_time, self.end_time).await?;
+                    let data = provider.load_data(&symbol, self.start_time, self.end_time)?;
                     self.market_data.insert(symbol.clone(), data);
                 }
             } else {
@@ -170,7 +170,7 @@ impl BacktestEngine {
         if let Some(data_series) = self.market_data.get(symbol) {
             // 정확한 시간 또는 가장 가까운 이전 데이터 찾기
             let matching_data = data_series.iter()
-              .filter(|data| data.timestamp <= time)
+              .filter(|data| data.timestamp <= time.timestamp_millis())
               .max_by_key(|data| data.timestamp)
               .cloned();
             
