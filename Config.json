@@ -4,11 +4,11 @@
     "port": 3030
   },
   "exchange": {
-    "name": "Mock",
-    "api_key": null,
-    "api_secret": null,
-    "base_url": null,
-    "use_mock": true
+    "name": "BinanceFutures",
+    "api_key": "YOUR_API_KEY",
+    "api_secret": "YOUR_API_SECRET",
+    "base_url": "https://fapi.binance.com",
+    "use_mock": false
   },
   "logging": {
     "level": "info",
