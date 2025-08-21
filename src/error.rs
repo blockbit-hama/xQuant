@@ -20,6 +20,9 @@ pub enum TradingError {
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
 
+    #[error("Invalid strategy: {0}")]
+    InvalidStrategy(String),
+
     #[error("Execution error: {0}")]
     ExecutionError(String),
 
@@ -59,11 +62,26 @@ pub enum TradingError {
     #[error("Insufficient balance")]
     InsufficientBalance,
 
+    #[error("Duplicate strategy: {0}")]
+    DuplicateStrategy(String),
+
+    #[error("Strategy not found: {0}")]
+    StrategyNotFound(String),
+
     #[error("Risk limit exceeded: {0}")]
     RiskLimitExceeded(String),
 
     #[error("Parse error: {0}")]
     ParseError(String),
+
+    #[error("Missing data: {0}")]
+    MissingData(String),
+
+    #[error("Insufficient data")]
+    InsufficientData,
+
+    #[error("Calculation error: {0}")]
+    CalculationError(String),
 
     #[error("Unknown error: {0}")]
     Unknown(String),

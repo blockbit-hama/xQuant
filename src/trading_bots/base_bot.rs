@@ -70,12 +70,7 @@ pub fn create_order_from_signal(
     SignalType::Buy | SignalType::StrongBuy => {
       // 현재 롱 포지션이 없거나 숏 포지션인 경우만 매수
       if current_position <= 0.0 {
-        Some(Order::new(
-          symbol.to_string(),
-          OrderSide::Buy,
-          position_size,
-          OrderType::Market,
-        ))
+        Some(Order::new(symbol.to_string(), OrderSide::Buy, OrderType::Market, position_size, 0.0))
       } else {
         None
       }
@@ -84,12 +79,7 @@ pub fn create_order_from_signal(
     SignalType::Sell | SignalType::StrongSell => {
       // 현재 숏 포지션이 없거나 롱 포지션인 경우만 매도
       if current_position >= 0.0 {
-        Some(Order::new(
-          symbol.to_string(),
-          OrderSide::Sell,
-          position_size,
-          OrderType::Market,
-        ))
+        Some(Order::new(symbol.to_string(), OrderSide::Sell, OrderType::Market, position_size, 0.0))
       } else {
         None
       }
@@ -100,12 +90,7 @@ pub fn create_order_from_signal(
       if current_position > 0.0 {
         let reduce_size = (current_position * 0.5).min(position_size);
         if reduce_size > 0.0 {
-          Some(Order::new(
-            symbol.to_string(),
-            OrderSide::Sell,
-            reduce_size,
-            OrderType::Market,
-          ))
+          Some(Order::new(symbol.to_string(), OrderSide::Sell, OrderType::Market, reduce_size, 0.0))
         } else {
           None
         }
@@ -119,12 +104,7 @@ pub fn create_order_from_signal(
       if current_position < 0.0 {
         let reduce_size = (current_position.abs() * 0.5).min(position_size);
         if reduce_size > 0.0 {
-          Some(Order::new(
-            symbol.to_string(),
-            OrderSide::Buy,
-            reduce_size,
-            OrderType::Market,
-          ))
+          Some(Order::new(symbol.to_string(), OrderSide::Buy, OrderType::Market, reduce_size, 0.0))
         } else {
           None
         }
@@ -136,12 +116,7 @@ pub fn create_order_from_signal(
     SignalType::CloseLong => {
       // 롱 포지션 전체 청산
       if current_position > 0.0 {
-        Some(Order::new(
-          symbol.to_string(),
-          OrderSide::Sell,
-          current_position,
-          OrderType::Market,
-        ))
+        Some(Order::new(symbol.to_string(), OrderSide::Sell, OrderType::Market, current_position, 0.0))
       } else {
         None
       }
@@ -150,12 +125,7 @@ pub fn create_order_from_signal(
     SignalType::CloseShort => {
       // 숏 포지션 전체 청산
       if current_position < 0.0 {
-        Some(Order::new(
-          symbol.to_string(),
-          OrderSide::Buy,
-          current_position.abs(),
-          OrderType::Market,
-        ))
+        Some(Order::new(symbol.to_string(), OrderSide::Buy, OrderType::Market, current_position.abs(), 0.0))
       } else {
         None
       }

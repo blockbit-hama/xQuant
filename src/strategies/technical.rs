@@ -10,7 +10,7 @@ use crate::error::TradingError;
 use crate::models::market_data::MarketData;
 use crate::models::order::Order;
 use crate::trading_bots::{TradingBot, TradingBotConfig, bot_config};
-use super::traits::Strategy;
+use crate::strategies::Strategy;
 
 // 기술적 분석 기반 전략
 pub struct TechnicalStrategy {
@@ -96,7 +96,7 @@ impl Strategy for TechnicalStrategy {
     self.bot.update(&market_data)
   }
   
-  fn get_orders(&self) -> Result<Vec<Order>, TradingError> {
+  fn get_orders(&mut self) -> Result<Vec<Order>, TradingError> {
     if !self.is_active {
       return Ok(vec![]);
     }

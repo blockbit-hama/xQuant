@@ -3,7 +3,7 @@ pub mod iceberg;
 pub mod trailing_stop;
 pub mod twap;
 pub mod combined;
-mod technical;
+pub mod technical;
 
 use async_trait::async_trait;
 
@@ -24,6 +24,12 @@ pub trait Strategy: Send + Sync {
 
     /// 전략 설명 가져오기
     fn description(&self) -> &str;
+
+    /// 활성화 여부
+    fn is_active(&self) -> bool { true }
+
+    /// 활성화 설정
+    fn set_active(&mut self, _active: bool) {}
 }
 
 /// 전략 팩토리 인터페이스

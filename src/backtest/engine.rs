@@ -10,7 +10,7 @@ use crate::models::trade::Trade;
 use crate::core::strategy_manager::StrategyManager;
 use crate::exchange::traits::Exchange;
 use crate::exchange::mocks::MockExchange;
-use crate::strategies::traits::Strategy;
+use crate::strategies::Strategy;
 use super::result::BacktestResult;
 use super::data_provider::HistoricalDataProvider;
 

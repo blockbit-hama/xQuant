@@ -27,7 +27,7 @@ pub fn update_indicators_with_market_data(
   indicators: &mut [Box<dyn Indicator>],
   market_data: &MarketData
 ) -> Result<(), TradingError> {
-  update_indicators(indicators, market_data.close_price, Some(market_data.volume))
+  update_indicators(indicators, market_data.close, Some(market_data.volume))
 }
 
 // 지표 초기화

@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 use crate::error::TradingError;
 use crate::models::market_data::MarketData;
 use crate::models::order::Order;
-use crate::strategies::traits::Strategy;
+use crate::strategies::Strategy;
 
 // 전략 관리자 - 여러 전략 관리 및 조정
 pub struct StrategyManager {
@@ -86,11 +86,11 @@ impl StrategyManager {
   }
   
   // 모든 활성 전략에서 주문 수집
-  pub fn get_all_orders(&self) -> Result<Vec<Order>, TradingError> {
+  pub fn get_all_orders(&mut self) -> Result<Vec<Order>, TradingError> {
     let mut all_orders = Vec::new();
     
     for name in &self.active_strategies {
-      if let Some(strategy) = self.strategies.get(name) {
+      if let Some(strategy) = self.strategies.get_mut(name) {
         let orders = strategy.get_orders()?;
         all_orders.extend(orders);
       }
@@ -100,11 +100,18 @@ impl StrategyManager {
   }
   
   // 특정 전략의 주문 가져오기
-  pub fn get_orders_from_strategy(&self, name: &str) -> Result<Vec<Order>, TradingError> {
-    let strategy = self.strategies.get(name)
+  pub fn get_orders_from_strategy(&mut self, name: &str) -> Result<Vec<Order>, TradingError> {
+    let strategy = self.strategies.get_mut(name)
       .ok_or_else(|| TradingError::StrategyNotFound(format!("Strategy '{}' not found", name)))?;
     
     strategy.get_orders()
+  }
+
+  // 전략 상태 조회
+  pub fn get_strategy_status(&self, name: &str) -> Result<(String, bool), TradingError> {
+    let strategy = self.strategies.get(name)
+      .ok_or_else(|| TradingError::StrategyNotFound(format!("Strategy '{}' not found", name)))?;
+    Ok((name.to_string(), strategy.is_active()))
   }
   
   // 사용 가능한 전략 목록

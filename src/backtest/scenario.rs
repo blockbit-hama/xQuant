@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::error::TradingError;
 use crate::models::market_data::MarketData;
-use crate::strategies::traits::Strategy;
+use crate::strategies::Strategy;
 use super::engine::BacktestEngine;
 use super::result::BacktestResult;
 use super::data_provider::{HistoricalDataProvider, CsvDataProvider};

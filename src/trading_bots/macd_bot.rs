@@ -52,7 +52,7 @@ impl MACDBot {
 impl TradingBot for MACDBot {
   fn update(&mut self, market_data: &MarketData) -> Result<(), TradingError> {
     // 현재 시장 데이터로 지표 업데이트
-    self.macd.update(market_data.close_price, Some(market_data.volume))?;
+    self.macd.update(market_data.close, Some(market_data.volume))?;
     
     // 신호 평가
     if self.macd.is_ready() {

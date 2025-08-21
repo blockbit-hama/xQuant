@@ -1,6 +1,12 @@
 // TA 관련 핸들러들
 
-use crate::indicators::{Indicator, IndicatorResult};
+use std::collections::HashMap;
+use std::sync::Arc;
+use warp::http::StatusCode;
+use warp::reply::{json, with_status, Reply};
+use tokio::sync::RwLock;
+use crate::exchange::traits::Exchange;
+use crate::indicators::Indicator;
 use crate::trading_bots::bot_config::TradingBotConfig;
 use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
@@ -307,7 +313,7 @@ pub async fn calculate_indicators(
   
   for candle in &historical_data {
     // 인디케이터 업데이트
-    if let Err(e) = indicator.update(candle.close_price, Some(candle.volume)) {
+    if let Err(e) = indicator.update(candle.close, Some(candle.volume)) {
       continue; // 업데이트 실패 시 스킵
     }
     
@@ -362,10 +368,10 @@ pub async fn calculate_backtest_performance(
   
   // 시간 변환
   let start_time = DateTime::<Utc>::from_timestamp_millis(req.start_time)
-    .ok_or_else(|| warp::reject::custom(InvalidRequestError))?;
+    .ok_or_else(|| warp::reject())?;
   
   let end_time = DateTime::<Utc>::from_timestamp_millis(req.end_time)
-    .ok_or_else(|| warp::reject::custom(InvalidRequestError))?;
+    .ok_or_else(|| warp::reject())?;
   
   // 데이터 파일 경로 생성
   let data_file = format!("./data/{}-1m.csv", req.symbol);
