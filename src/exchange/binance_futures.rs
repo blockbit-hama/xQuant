@@ -3,6 +3,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::collections::HashMap;
 
 use crate::error::TradingError;
 use crate::exchange::traits::Exchange;
@@ -22,6 +23,7 @@ pub struct BinanceFuturesExchange {
   pub min_interval_ms: u64,
   pub last_request_ms: AtomicI64,
   pub time_offset_ms: AtomicI64,
+  symbol_filters: HashMap<String, SymbolFilters>,
 }
 
 impl BinanceFuturesExchange {
@@ -35,6 +37,7 @@ impl BinanceFuturesExchange {
       min_interval_ms: 50,
       last_request_ms: AtomicI64::new(0),
       time_offset_ms: AtomicI64::new(0),
+      symbol_filters: HashMap::new(),
     }
   }
 
@@ -62,55 +65,149 @@ impl BinanceFuturesExchange {
 
   fn ts_with_offset(&self) -> i64 { Self::timestamp_ms() + self.time_offset_ms.load(Ordering::SeqCst) }
 }
+#[derive(Debug, Clone, Default)]
+struct SymbolFilters {
+  tick_size: f64,
+  step_size: f64,
+  min_qty: f64,
+  min_notional: f64,
+}
+
+fn floor_to_step(value: f64, step: f64) -> f64 {
+  if step <= 0.0 { return value; }
+  (value / step).floor() * step
+}
+
+fn ceil_to_step(value: f64, step: f64) -> f64 {
+  if step <= 0.0 { return value; }
+  (value / step).ceil() * step
+}
+
+impl BinanceFuturesExchange {
+  async fn ensure_filters(&mut self, symbol: &str) -> Result<(), TradingError> {
+    if self.symbol_filters.contains_key(symbol) { return Ok(()); }
+    let url = format!("{}/fapi/v1/exchangeInfo?symbol={}", self.base_url, symbol);
+    self.throttle().await;
+    let res = self.http.get(url).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("exchangeInfo http error: {}", e)))?;
+    if !res.status().is_success() {
+      return Err(TradingError::ExchangeError(format!("exchangeInfo failed: {}", res.status())));
+    }
+    let v = res.json::<serde_json::Value>().await
+      .map_err(|e| TradingError::ExchangeError(format!("exchangeInfo parse error: {}", e)))?;
+    let mut filters = SymbolFilters::default();
+    if let Some(arr) = v.get("symbols").and_then(|s| s.as_array()).and_then(|a| a.get(0)).and_then(|s| s.get("filters")).and_then(|f| f.as_array()) {
+      for f in arr {
+        if let Some(ft) = f.get("filterType").and_then(|x| x.as_str()) {
+          match ft {
+            "PRICE_FILTER" => {
+              filters.tick_size = f.get("tickSize").and_then(|x| x.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+            }
+            "LOT_SIZE" => {
+              filters.step_size = f.get("stepSize").and_then(|x| x.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+              filters.min_qty = f.get("minQty").and_then(|x| x.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+            }
+            "MIN_NOTIONAL" => {
+              filters.min_notional = f.get("notional").or_else(|| f.get("minNotional")).and_then(|x| x.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+            }
+            _ => {}
+          }
+        }
+      }
+    }
+    self.symbol_filters.insert(symbol.to_string(), filters);
+    Ok(())
+  }
+
+  async fn get_mid_price(&self, symbol: &str) -> Result<f64, TradingError> {
+    // reuse bookTicker logic
+    let url = format!("{}/fapi/v1/ticker/bookTicker?symbol={}", self.base_url, symbol);
+    self.throttle().await;
+    let res = self.http.get(url).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("bookTicker http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("bookTicker failed: {}", res.status()))); }
+    let json = res.json::<serde_json::Value>().await
+      .map_err(|e| TradingError::ExchangeError(format!("bookTicker parse error: {}", e)))?;
+    let bid = json.get("bidPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let ask = json.get("askPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(bid);
+    let mid = if bid > 0.0 && ask > 0.0 { (bid + ask) / 2.0 } else { bid.max(ask) };
+    if mid <= 0.0 { return Err(TradingError::DataNotFound(format!("mid price {}", symbol))); }
+    Ok(mid)
+  }
+}
 
 #[async_trait]
 impl Exchange for BinanceFuturesExchange {
   async fn submit_order(&mut self, order: Order) -> Result<OrderId, TradingError> {
+    // Load symbol filters and normalize price/qty
+    self.ensure_filters(&order.symbol).await?;
+    let mut normalized_order = order.clone();
+    let filters = self.symbol_filters.get(&order.symbol).cloned().unwrap_or_default();
+    if normalized_order.order_type == OrderType::Limit && filters.tick_size > 0.0 {
+      normalized_order.price = floor_to_step(normalized_order.price, filters.tick_size);
+    }
+    if filters.step_size > 0.0 {
+      // qty step floor
+      normalized_order.quantity = floor_to_step(normalized_order.quantity, filters.step_size);
+      if normalized_order.quantity < filters.min_qty && filters.min_qty > 0.0 {
+        normalized_order.quantity = filters.min_qty;
+      }
+    }
+    // min notional guard: if not met and we can adjust price, bump price minimally
+    if filters.min_notional > 0.0 {
+      let notional = normalized_order.quantity * normalized_order.price;
+      if notional < filters.min_notional {
+        let need = filters.min_notional / normalized_order.quantity;
+        let mut new_price = need;
+        if filters.tick_size > 0.0 { new_price = ceil_to_step(new_price, filters.tick_size); }
+        normalized_order.price = new_price;
+      }
+    }
     // Build Binance Futures order params by type
-    let side = match order.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL" };
+    let side = match normalized_order.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL" };
     let ts = self.ts_with_offset();
     let mut params = vec![
-      format!("symbol={}", order.symbol),
+      format!("symbol={}", normalized_order.symbol),
       format!("side={}", side),
-      format!("quantity={}", order.quantity),
+      format!("quantity={}", normalized_order.quantity),
       format!("timestamp={}", ts),
       format!("recvWindow={}", self.recv_window_ms),
     ];
 
-    match order.order_type {
+    match normalized_order.order_type {
       OrderType::Market | OrderType::VWAP | OrderType::TWAP => {
         params.push("type=MARKET".to_string());
       }
       OrderType::Limit | OrderType::Iceberg => {
         params.push("type=LIMIT".to_string());
-        params.push(format!("price={}", order.price));
-        params.push(format!("timeInForce={}", order.time_in_force));
-        if let Some(ice) = order.iceberg_qty { params.push(format!("icebergQty={}", ice)); }
+        params.push(format!("price={}", normalized_order.price));
+        params.push(format!("timeInForce={}", normalized_order.time_in_force));
+        if let Some(ice) = normalized_order.iceberg_qty { params.push(format!("icebergQty={}", ice)); }
       }
       OrderType::StopLoss | OrderType::StopLimit => {
         // Use STOP (limit) if price provided, else STOP_MARKET
-        if order.price > 0.0 {
+        if normalized_order.price > 0.0 {
           params.push("type=STOP".to_string());
-          params.push(format!("price={}", order.price));
-          params.push(format!("timeInForce={}", order.time_in_force));
+          params.push(format!("price={}", normalized_order.price));
+          params.push(format!("timeInForce={}", normalized_order.time_in_force));
         } else {
           params.push("type=STOP_MARKET".to_string());
         }
-        let stop = order.stop_price.unwrap_or(order.price);
+        let stop = normalized_order.stop_price.unwrap_or(normalized_order.price);
         if stop > 0.0 { params.push(format!("stopPrice={}", stop)); }
       }
       OrderType::TrailingStop => {
         // Binance requires callbackRate in percent (0.1-5.0)
         params.push("type=TRAILING_STOP_MARKET".to_string());
-        let cb = order.trailing_delta.unwrap_or(0.5).max(0.1).min(5.0);
+        let cb = normalized_order.trailing_delta.unwrap_or(0.5).max(0.1).min(5.0);
         params.push(format!("callbackRate={}", cb));
         // Optional activationPrice maps from stop_price when available
-        if let Some(act) = order.stop_price { params.push(format!("activationPrice={}", act)); }
+        if let Some(act) = normalized_order.stop_price { params.push(format!("activationPrice={}", act)); }
       }
     }
     // futures flags: reduceOnly, positionSide
-    if let Some(ro) = order.reduce_only { if ro { params.push("reduceOnly=true".to_string()); } }
-    if let Some(ps) = &order.position_side { params.push(format!("positionSide={}", ps)); }
+    if let Some(ro) = normalized_order.reduce_only { if ro { params.push("reduceOnly=true".to_string()); } }
+    if let Some(ps) = &normalized_order.position_side { params.push(format!("positionSide={}", ps)); }
     let query = params.join("&");
     let signature = self.sign(&query);
     let url = format!("{}/fapi/v1/order?{}&signature={}", self.base_url, query, signature);
