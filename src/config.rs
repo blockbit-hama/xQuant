@@ -61,11 +61,29 @@ impl Config {
             file.read_to_string(&mut contents)
                 .map_err(|e| TradingError::ConfigError(format!("Failed to read config file: {}", e)))?;
 
-            serde_json::from_str(&contents)
-                .map_err(|e| TradingError::ConfigError(format!("Failed to parse config file: {}", e)))
+            let mut cfg: Config = serde_json::from_str(&contents)
+                .map_err(|e| TradingError::ConfigError(format!("Failed to parse config file: {}", e)))?;
+            // environment overrides
+            cfg.apply_env_overrides();
+            Ok(cfg)
         } else {
             // Return default configuration
-            Ok(Config::default())
+            let mut cfg = Config::default();
+            cfg.apply_env_overrides();
+            Ok(cfg)
+        }
+    }
+
+    /// Apply environment variable overrides for sensitive/runtime fields
+    fn apply_env_overrides(&mut self) {
+        use std::env;
+        if let Ok(v) = env::var("EXCHANGE_API_KEY") { if !v.is_empty() { self.exchange.api_key = Some(v); } }
+        if let Ok(v) = env::var("EXCHANGE_API_SECRET") { if !v.is_empty() { self.exchange.api_secret = Some(v); } }
+        if let Ok(v) = env::var("EXCHANGE_BASE_URL") { if !v.is_empty() { self.exchange.base_url = Some(v); } }
+        if let Ok(v) = env::var("USE_MOCK") {
+            let lower = v.to_lowercase();
+            if ["1","true","yes"].contains(&lower.as_str()) { self.exchange.use_mock = true; }
+            if ["0","false","no"].contains(&lower.as_str()) { self.exchange.use_mock = false; }
         }
     }
 }

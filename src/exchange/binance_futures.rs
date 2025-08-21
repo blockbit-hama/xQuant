@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::error::TradingError;
 use crate::exchange::traits::Exchange;
@@ -17,6 +18,9 @@ pub struct BinanceFuturesExchange {
   pub api_key: String,
   pub api_secret: String,
   pub http: reqwest::Client,
+  pub recv_window_ms: u64,
+  pub min_interval_ms: u64,
+  pub last_request_ms: AtomicI64,
 }
 
 impl BinanceFuturesExchange {
@@ -26,6 +30,9 @@ impl BinanceFuturesExchange {
       api_key: api_key.into(),
       api_secret: api_secret.into(),
       http: reqwest::Client::new(),
+      recv_window_ms: 5000,
+      min_interval_ms: 50,
+      last_request_ms: AtomicI64::new(0),
     }
   }
 
@@ -38,6 +45,17 @@ impl BinanceFuturesExchange {
     mac.update(query.as_bytes());
     let result = mac.finalize().into_bytes();
     hex::encode(result)
+  }
+
+  async fn throttle(&self) {
+    let now = Self::timestamp_ms();
+    let last = self.last_request_ms.load(Ordering::SeqCst);
+    let elapsed = (now - last) as u64;
+    if elapsed < self.min_interval_ms {
+      let sleep_ms = self.min_interval_ms - elapsed;
+      tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+    }
+    self.last_request_ms.store(Self::timestamp_ms(), Ordering::SeqCst);
   }
 }
 
@@ -54,6 +72,7 @@ impl Exchange for BinanceFuturesExchange {
       format!("type={}", order_type),
       format!("quantity={}", order.quantity),
       format!("timestamp={}", ts),
+      format!("recvWindow={}", self.recv_window_ms),
     ];
     if let OrderType::Limit = order.order_type {
       params.push(format!("price={}", order.price));
@@ -62,6 +81,7 @@ impl Exchange for BinanceFuturesExchange {
     let query = params.join("&");
     let signature = self.sign(&query);
     let url = format!("{}/fapi/v1/order?{}&signature={}", self.base_url, query, signature);
+    self.throttle().await;
     let res = self.http
       .post(url)
       .header("X-MBX-APIKEY", &self.api_key)
@@ -96,6 +116,7 @@ impl Exchange for BinanceFuturesExchange {
   async fn get_market_data(&self, symbol: &str) -> Result<MarketData, TradingError> {
     // Use 24hr ticker as a simple data source
     let url = format!("{}/fapi/v1/ticker/24hr?symbol={}", self.base_url, symbol);
+    self.throttle().await;
     let res = self.http.get(url)
       .send().await
       .map_err(|e| TradingError::ExchangeError(format!("market_data http error: {}", e)))?;
