@@ -137,6 +137,14 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   setup_technical_strategies(strategy_manager.clone(), exchange.clone(), market_stream.clone()).await?;
   log::info!("기술적 분석 전략 초기화 완료");
   
+  // 전략 실행 런타임 시작: 거래소 시세 폴링 → 전략 업데이트 → 주문 제출
+  start_strategy_runtime(
+    strategy_manager.clone(),
+    order_manager.clone(),
+    exchange.clone(),
+    vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
+  );
+  
   // API 라우트 초기화 (전략 매니저 추가)
   let routes = routes::create_routes(
     exchange.clone(),
@@ -218,6 +226,65 @@ async fn setup_technical_strategies(
   // 시장 데이터 스트림 연결은 추후 구현 예정
   
   Ok(())
+}
+
+// 실시간 전략 실행 루프: 심볼별로 거래소 시세를 폴링하여 전략을 업데이트하고 주문을 제출한다
+fn start_strategy_runtime(
+  strategy_manager: Arc<RwLock<StrategyManager>>,
+  order_manager: Arc<RwLock<OrderManager>>,
+  exchange: Arc<RwLock<dyn Exchange>>,
+  symbols: Vec<String>,
+) {
+  // 심볼별 태스크 생성
+  for symbol in symbols {
+    let sm = strategy_manager.clone();
+    let om = order_manager.clone();
+    let ex = exchange.clone();
+    tokio::spawn(async move {
+      let mut ticker = tokio::time::interval(std::time::Duration::from_millis(1000));
+      loop {
+        ticker.tick().await;
+        // 최신 시장 데이터 조회
+        let md_res = {
+          let exr = ex.read().await;
+          exr.get_market_data(&symbol).await
+        };
+        let market_data = match md_res {
+          Ok(md) => md,
+          Err(e) => {
+            log::warn!("market data fetch failed for {}: {}", symbol, e);
+            continue;
+          }
+        };
+        // 전략 업데이트 및 주문 수집
+        let orders = {
+          let mut manager = sm.write().await;
+          if let Err(e) = manager.update_all(&market_data) {
+            log::warn!("strategy update failed: {}", e);
+            Vec::new()
+          } else {
+            match manager.get_all_orders() {
+              Ok(os) => os,
+              Err(e) => {
+                log::warn!("collect orders failed: {}", e);
+                Vec::new()
+              }
+            }
+          }
+        };
+        // 주문 제출
+        for order in orders {
+          let submit_res = {
+            let om_read = om.read().await;
+            om_read.create_order(order).await
+          };
+          if let Err(e) = submit_res {
+            log::warn!("order submit failed: {}", e);
+          }
+        }
+      }
+    });
+  }
 }
 
 async fn run_backtest() -> Result<(), anyhow::Error> {
