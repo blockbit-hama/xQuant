@@ -12,6 +12,8 @@ use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
 use crate::core::strategy_manager::StrategyManager;
 use serde::{Deserialize, Serialize};
+use crate::order_core::manager::OrderManager;
+use crate::models::order::{Order, OrderId, OrderSide, OrderType};
 
 /// 전략 목록 조회 핸들러
 pub async fn list_strategies(
@@ -520,4 +522,167 @@ pub async fn analyze_trade_logs(
     });
   
   Ok(with_status(json(&response), StatusCode::OK))
+}
+
+// ====== 기본 주문/실행 관련 핸들러 스텁 ======
+
+#[derive(Debug, Deserialize)]
+pub struct CreateOrderRequest {
+  pub symbol: String,
+  pub side: OrderSide,
+  pub order_type: OrderType,
+  pub quantity: f64,
+  pub price: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateOrderResponse {
+  pub order_id: String,
+}
+
+pub async fn create_order(
+  req: CreateOrderRequest,
+  _exchange: Arc<RwLock<dyn Exchange>>, // reserved for validation
+  order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  // Build order
+  let price = req.price.unwrap_or(0.0);
+  let order = Order::new(req.symbol, req.side, req.order_type, req.quantity, price);
+
+  let id_res = {
+    let manager = order_manager.read().await;
+    manager.create_order(order).await
+  };
+
+  match id_res {
+    Ok(order_id) => Ok(with_status(json(&CreateOrderResponse { order_id: order_id.to_string() }), StatusCode::CREATED)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("failed to create order: {}", e)})), StatusCode::BAD_REQUEST)),
+  }
+}
+
+pub async fn get_orders(
+  order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let res = {
+    let manager = order_manager.read().await;
+    manager.get_open_orders().await
+  };
+
+  match res {
+    Ok(list) => Ok(with_status(json(&list), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("failed to fetch orders: {}", e)})), StatusCode::BAD_REQUEST)),
+  }
+}
+
+pub async fn cancel_order(
+  order_id: String,
+  order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let oid = OrderId(order_id);
+  let res = {
+    let manager = order_manager.read().await;
+    manager.cancel_order(&oid).await
+  };
+
+  match res {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"cancelled"})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("failed to cancel order: {}", e)})), StatusCode::BAD_REQUEST)),
+  }
+}
+
+// VWAP endpoints (stubs)
+#[derive(Debug, Deserialize)]
+pub struct CreateVwapRequest { pub symbol: String, pub side: OrderSide, pub target_quantity: f64, pub execution_interval_ms: i64, pub vwap_window: Option<usize> }
+
+pub async fn create_vwap_order(
+  _req: CreateVwapRequest,
+  _exchange: Arc<RwLock<dyn Exchange>>,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"VWAP not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn get_vwap_status(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"VWAP status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn cancel_vwap_order(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"VWAP cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+// Iceberg endpoints (stubs)
+#[derive(Debug, Deserialize)]
+pub struct CreateIcebergRequest { pub symbol: String, pub side: OrderSide, pub total_quantity: f64, pub display_size: f64 }
+
+pub async fn create_iceberg_order(
+  _req: CreateIcebergRequest,
+  _exchange: Arc<RwLock<dyn Exchange>>,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Iceberg not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn get_iceberg_status(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Iceberg status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn cancel_iceberg_order(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Iceberg cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+// Trailing stop endpoints (stubs)
+#[derive(Debug, Deserialize)]
+pub struct CreateTrailingStopRequest { pub symbol: String, pub side: OrderSide, pub quantity: f64, pub trailing_delta: f64 }
+
+pub async fn create_trailing_stop(
+  _req: CreateTrailingStopRequest,
+  _exchange: Arc<RwLock<dyn Exchange>>,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn get_trailing_stop_status(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+pub async fn cancel_trailing_stop(
+  _id: String,
+  _order_manager: Arc<RwLock<OrderManager>>,
+) -> Result<impl Reply, warp::Rejection> {
+  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+}
+
+// Market data endpoint
+#[derive(Debug, Serialize)]
+pub struct MarketDataResponse { pub symbol: String, pub data: crate::models::market_data::MarketData }
+
+pub async fn get_market_data(
+  symbol: String,
+  exchange: Arc<RwLock<dyn Exchange>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let res = {
+    let ex = exchange.read().await;
+    ex.get_market_data(&symbol).await
+  };
+
+  match res {
+    Ok(md) => Ok(with_status(json(&MarketDataResponse { symbol, data: md }), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("failed to get market data: {}", e)})), StatusCode::BAD_REQUEST)),
+  }
 }

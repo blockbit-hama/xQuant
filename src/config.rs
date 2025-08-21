@@ -17,6 +17,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub exchange: ExchangeConfig,
     pub logging: LoggingConfig,
+    pub prediction_api: PredictionApiConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +39,12 @@ pub struct ExchangeConfig {
 pub struct LoggingConfig {
     pub level: String,
     pub file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredictionApiConfig {
+    pub base_url: String,
+    pub timeout_ms: Option<u64>,
 }
 
 impl Config {
@@ -80,6 +87,10 @@ impl Default for Config {
             logging: LoggingConfig {
                 level: "info".to_string(),
                 file_path: None,
+            },
+            prediction_api: PredictionApiConfig {
+                base_url: "http://127.0.0.1:8000".to_string(),
+                timeout_ms: Some(5000),
             },
         }
     }

@@ -44,6 +44,8 @@ use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
 use crate::core::strategy_manager::StrategyManager;
 use crate::trading_bots::bot_config::TradingBotConfig;
+use crate::exchange::traits::Exchange;
+use crate::prediction_client::{PredictionClient, SignalRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -81,8 +83,10 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   let mut market_manager = MarketDataManager::new();
   market_manager.add_provider(ws_provider.clone());
   
-  // 모든 제공자 연결
-  market_manager.connect_all().await?;
+  // 모든 제공자 연결(실패해도 경고 후 지속)
+  if let Err(e) = market_manager.connect_all().await {
+    log::warn!("market providers connect failed: {} — running with mocks only", e);
+  }
   
   // 거래소 인스턴스 생성
   let exchange = Arc::new(RwLock::new(MockExchange::new(config.clone())));
@@ -107,6 +111,16 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   let strategy_manager = Arc::new(RwLock::new(StrategyManager::new()));
   log::info!("전략 매니저 초기화 완료");
   
+  // 예측 API 헬스체크 및 샘플 호출
+  {
+    let pred = PredictionClient::new(config.prediction_api.base_url.clone());
+    match pred.health_check().await {
+      Ok(true) => log::info!("Prediction API healthy: {}", config.prediction_api.base_url),
+      Ok(false) => log::warn!("Prediction API unhealthy: {}", config.prediction_api.base_url),
+      Err(e) => log::warn!("Prediction API check failed: {}", e),
+    }
+  }
+
   // 기본 기술적 분석 전략 추가 (예시)
   if config.enable_ta_strategies {
     setup_technical_strategies(strategy_manager.clone(), exchange.clone(), market_stream.clone()).await?;

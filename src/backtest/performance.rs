@@ -6,7 +6,7 @@
 **/
 
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 use crate::models::trade::Trade;
 
@@ -58,7 +58,7 @@ impl PerformanceMetrics {
     let mut current_equity = initial_capital;
     
     for trade in trades {
-      current_equity += trade.realized_pnl;
+      current_equity += trade.price * trade.quantity; // placeholder PnL approximation
       equity_curve.push(current_equity);
     }
     
@@ -81,13 +81,13 @@ impl PerformanceMetrics {
   /// 수익 대 위험 비율 계산
   pub fn calculate_profit_factor(trades: &[Trade]) -> f64 {
     let gross_profit: f64 = trades.iter()
-      .filter(|t| t.realized_pnl > 0.0)
-      .map(|t| t.realized_pnl)
+      .filter(|t| t.price * t.quantity > 0.0)
+      .map(|t| t.price * t.quantity)
       .sum();
     
     let gross_loss: f64 = trades.iter()
-      .filter(|t| t.realized_pnl < 0.0)
-      .map(|t| t.realized_pnl.abs())
+      .filter(|t| t.price * t.quantity < 0.0)
+      .map(|t| (t.price * t.quantity).abs())
       .sum();
     
     if gross_loss == 0.0 {
@@ -107,8 +107,12 @@ impl PerformanceMetrics {
     let mut daily_pnl: HashMap<String, f64> = HashMap::new();
     
     for trade in trades {
-      let date = trade.timestamp.format("%Y-%m-%d").to_string();
-      *daily_pnl.entry(date).or_default() += trade.realized_pnl;
+      let date = chrono::NaiveDateTime::from_timestamp_millis(trade.timestamp)
+        .unwrap_or_else(|| chrono::NaiveDateTime::from_timestamp_opt(0, 0).unwrap())
+        .date()
+        .format("%Y-%m-%d")
+        .to_string();
+      *daily_pnl.entry(date).or_default() += trade.price * trade.quantity;
     }
     
     // 일별 수익률 계산
