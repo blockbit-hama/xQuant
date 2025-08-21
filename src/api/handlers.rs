@@ -469,7 +469,7 @@ pub async fn calculate_backtest_performance(
       
       // 백테스트 실행
       match builder.build() {
-        Ok(scenario) => {
+        Ok(mut scenario) => {
           match scenario.run().await {
             Ok(result) => {
               // 성능 지표 계산 및 응답
