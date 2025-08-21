@@ -4,9 +4,7 @@
 
 ### 전체 구성 개요
 - **Rust 트레이딩 엔진(`src/`)**: 시스템의 핵심. 전략이 주문을 생성하고, 매니저가 오케스트레이션하며, 거래소 커넥터가 실행합니다.
-- **HTTP API**
-  - **Warp API(`src/api/*`, 포트 3030)**: 기존 REST 인터페이스(주문/전략/백테스트 등).
-  - **Axum API(`src/http/*`, 포트 4000)**: 대시보드/점진적 마이그레이션을 위한 신규 HTTP 인터페이스.
+- **HTTP API(Axum, `src/http/*`, 포트 4000)**: 대시보드/외부 연동을 위한 단일 HTTP 인터페이스.
 - **프론트엔드(`quant_front/`)**: Next.js + Tailwind 대시보드. Axum 및 Python API를 호출.
 - **Python 예측(`python_prediction/`)**: FastAPI 서비스. 지표/시그널/백테스트/ML(플레이스홀더) 제공.
 
@@ -63,17 +61,10 @@
 
 ---
 
-## HTTP 계층
-
-### Warp API (`src/api/routes.rs`, `src/api/handlers.rs`)
-- 성숙한 엔드포인트 제공:
-  - 전략 생성/관리/상태(VWAP, Iceberg, Trailing Stop, TWAP, Technical)
-  - 선물 설정(포지션 모드/마진 모드/레버리지/배치 설정)
-  - 백테스트/유틸리티
-- Bearer 토큰 스캐폴딩 존재(강화 예정).
+## HTTP 계층 (Axum 단일화)
 
 ### Axum API (`src/http/mod.rs`)
-- 목적: 대시보드 지향의 경량/현대화된 HTTP 표면. 마이그레이션 기간 동안 Warp와 공존.
+- 목적: 대시보드/운영을 위한 단일 HTTP 표면.
 - 현재 제공:
   - `GET /health`: `{ status: "ok" }`
   - `GET /strategies`: `StrategyManager`의 `(전략명, 활성여부)` 목록
@@ -82,7 +73,6 @@
 - 트레이딩 엔진과 같은 프로세스에서 구동되며, `Arc<RwLock<...>>`로 상태 공유.
 
 ### 포트
-- Warp: `127.0.0.1:3030`
 - Axum: `127.0.0.1:4000`
 
 ---
@@ -176,7 +166,6 @@ flowchart LR
   subgraph Rust[xQuant - Rust Process]
     subgraph HTTP
       A1[Axum API :4000]
-      W1[Warp API :3030]
     end
 
     subgraph Core[Trading Core]
@@ -200,7 +189,6 @@ flowchart LR
   F -->|REST| A1
   F -->|REST| PAPI
   A1 --> SM
-  W1 --> SM
   SM -->|orders| OM
   OM -->|submit/cancel/status| BX
   OM -->|submit/cancel/status| MX

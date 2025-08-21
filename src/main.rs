@@ -26,10 +26,10 @@ mod trading_bots;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use warp::Filter;
+// use warp::Filter; // Warp 제거 예정: Axum 단일화
 use chrono::{Utc, Duration};
 
-use crate::api::routes;
+// use crate::api::routes; // Warp 라우트 사용 중지
 use crate::backtest::scenario::BacktestScenarioBuilder;
 use crate::http::{build_router, AppState};
 use crate::config::Config;
@@ -170,23 +170,7 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
     vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
   );
   
-  // API 라우트 초기화 (전략 매니저 추가)
-  let routes = routes::create_routes(
-    exchange.clone(),
-    order_manager.clone(),
-    strategy_manager.clone(),  // 전략 매니저 추가
-    config.clone(),
-  );
-  log::info!("API 라우트 초기화 완료");
-  
-  // Warp 서버 시작 (기존)
-  let warp_addr = ([127, 0, 0, 1], 3030);
-  log::info!("Warp 서버 시작: http://127.0.0.1:3030/");
-  let warp_task = tokio::spawn(async move {
-    warp::serve(routes).run(warp_addr).await;
-  });
-
-  // Axum 서버 시작 (신규)
+  // Axum 서버 시작
   let axum_state = AppState { exchange: exchange.clone(), strategy_manager: strategy_manager.clone() };
   let axum_router = build_router(axum_state);
   let axum_addr = std::net::SocketAddr::from(([127,0,0,1], 4000));
@@ -195,8 +179,7 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
     let listener = tokio::net::TcpListener::bind(axum_addr).await.unwrap();
     axum::serve(listener, axum_router.into_make_service()).await.unwrap();
   });
-
-  let _ = tokio::join!(warp_task, axum_task);
+  let _ = tokio::join!(axum_task);
   
   Ok(())
 }
