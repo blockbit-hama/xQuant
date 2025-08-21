@@ -185,7 +185,13 @@ pub fn create_routes(
         .and(warp::post())
         .and(warp::body::json())
         .and(exchange_filter.clone())
-        .and_then(handlers::set_leverage));
+        .and_then(handlers::set_leverage))
+      .or(warp::path("futures")
+        .and(warp::path("settings"))
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(exchange_filter.clone())
+        .and_then(handlers::apply_futures_settings));
     
     // TA 전략 관련 라우트 (신규)
     let strategies = warp::path("strategies");

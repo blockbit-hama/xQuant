@@ -828,6 +828,59 @@ pub async fn set_leverage(
   }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FuturesSettingsRequest {
+  pub position_mode: Option<SetPositionModeRequest>,
+  pub margins: Option<Vec<SetMarginModeRequest>>, // per-symbol margin mode
+  pub leverages: Option<Vec<SetLeverageRequest>>, // per-symbol leverage
+}
+
+#[derive(Debug, Serialize)]
+pub struct FuturesSettingsResponse {
+  pub position_mode_applied: Option<bool>,
+  pub margin_results: Vec<serde_json::Value>,
+  pub leverage_results: Vec<serde_json::Value>,
+}
+
+pub async fn apply_futures_settings(
+  req: FuturesSettingsRequest,
+  exchange: Arc<RwLock<dyn Exchange>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let mut position_mode_applied = None;
+  if let Some(pm) = req.position_mode {
+    let res = {
+      let mut ex = exchange.write().await;
+      ex.set_futures_position_mode(pm.hedge).await
+    };
+    position_mode_applied = Some(res.is_ok());
+  }
+
+  let mut margin_results = Vec::new();
+  if let Some(list) = req.margins {
+    for m in list {
+      let ok = {
+        let mut ex = exchange.write().await;
+        ex.set_futures_margin_mode(&m.symbol, m.isolated).await.is_ok()
+      };
+      margin_results.push(serde_json::json!({"symbol": m.symbol, "isolated": m.isolated, "ok": ok}));
+    }
+  }
+
+  let mut leverage_results = Vec::new();
+  if let Some(list) = req.leverages {
+    for l in list {
+      let ok = {
+        let mut ex = exchange.write().await;
+        ex.set_futures_leverage(&l.symbol, l.leverage).await.is_ok()
+      };
+      leverage_results.push(serde_json::json!({"symbol": l.symbol, "leverage": l.leverage, "ok": ok}));
+    }
+  }
+
+  let resp = FuturesSettingsResponse { position_mode_applied, margin_results, leverage_results };
+  Ok(with_status(json(&resp), StatusCode::OK))
+}
+
 // Market data endpoint
 #[derive(Debug, Serialize)]
 pub struct MarketDataResponse { pub symbol: String, pub data: crate::models::market_data::MarketData }
