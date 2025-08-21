@@ -116,6 +116,27 @@ pub fn create_routes(
       .and(warp::get())
       .and(exchange_filter.clone())
       .and_then(handlers::get_market_data);
+
+    // Futures settings routes
+    let futures = warp::path("futures");
+    let futures_routes = futures
+      .and(warp::path("position_mode"))
+      .and(warp::post())
+      .and(warp::body::json())
+      .and(exchange_filter.clone())
+      .and_then(handlers::set_position_mode)
+      .or(warp::path("futures")
+        .and(warp::path("margin_mode"))
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(exchange_filter.clone())
+        .and_then(handlers::set_margin_mode))
+      .or(warp::path("futures")
+        .and(warp::path("leverage"))
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(exchange_filter.clone())
+        .and_then(handlers::set_leverage));
     
     // TA 전략 관련 라우트 (신규)
     let strategies = warp::path("strategies");
@@ -166,6 +187,7 @@ pub fn create_routes(
       .or(iceberg_routes)
       .or(trailing_routes)
       .or(market_routes)
+      .or(futures_routes)
       .or(strategy_routes)  // 신규
       .or(indicator_routes)  // 신규
 }

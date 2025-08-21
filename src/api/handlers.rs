@@ -775,6 +775,59 @@ pub async fn cancel_trailing_stop(
   }
 }
 
+// ====== Futures settings endpoints ======
+
+#[derive(Debug, Deserialize)]
+pub struct SetPositionModeRequest { pub hedge: bool }
+
+pub async fn set_position_mode(
+  req: SetPositionModeRequest,
+  exchange: Arc<RwLock<dyn Exchange>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let res = {
+    let mut ex = exchange.write().await;
+    ex.set_futures_position_mode(req.hedge).await
+  };
+  match res {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"ok","hedge": req.hedge})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::BAD_REQUEST))
+  }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetMarginModeRequest { pub symbol: String, pub isolated: bool }
+
+pub async fn set_margin_mode(
+  req: SetMarginModeRequest,
+  exchange: Arc<RwLock<dyn Exchange>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let res = {
+    let mut ex = exchange.write().await;
+    ex.set_futures_margin_mode(&req.symbol, req.isolated).await
+  };
+  match res {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"ok","symbol": req.symbol,"isolated": req.isolated})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::BAD_REQUEST))
+  }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetLeverageRequest { pub symbol: String, pub leverage: u32 }
+
+pub async fn set_leverage(
+  req: SetLeverageRequest,
+  exchange: Arc<RwLock<dyn Exchange>>,
+) -> Result<impl Reply, warp::Rejection> {
+  let res = {
+    let mut ex = exchange.write().await;
+    ex.set_futures_leverage(&req.symbol, req.leverage).await
+  };
+  match res {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"ok","symbol": req.symbol,"leverage": req.leverage})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::BAD_REQUEST))
+  }
+}
+
 // Market data endpoint
 #[derive(Debug, Serialize)]
 pub struct MarketDataResponse { pub symbol: String, pub data: crate::models::market_data::MarketData }
