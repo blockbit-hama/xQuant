@@ -62,21 +62,47 @@ impl BinanceFuturesExchange {
 #[async_trait]
 impl Exchange for BinanceFuturesExchange {
   async fn submit_order(&mut self, order: Order) -> Result<OrderId, TradingError> {
-    // Minimal MARKET/LIMIT order via Binance Futures API (simplified)
+    // Build Binance Futures order params by type
     let side = match order.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL" };
-    let order_type = match order.order_type { OrderType::Market => "MARKET", OrderType::Limit => "LIMIT", _ => "MARKET" };
     let ts = Self::timestamp_ms();
     let mut params = vec![
       format!("symbol={}", order.symbol),
       format!("side={}", side),
-      format!("type={}", order_type),
       format!("quantity={}", order.quantity),
       format!("timestamp={}", ts),
       format!("recvWindow={}", self.recv_window_ms),
     ];
-    if let OrderType::Limit = order.order_type {
-      params.push(format!("price={}", order.price));
-      params.push("timeInForce=GTC".to_string());
+
+    match order.order_type {
+      OrderType::Market | OrderType::VWAP | OrderType::TWAP => {
+        params.push("type=MARKET".to_string());
+      }
+      OrderType::Limit | OrderType::Iceberg => {
+        params.push("type=LIMIT".to_string());
+        params.push(format!("price={}", order.price));
+        params.push(format!("timeInForce={}", order.time_in_force));
+        if let Some(ice) = order.iceberg_qty { params.push(format!("icebergQty={}", ice)); }
+      }
+      OrderType::StopLoss | OrderType::StopLimit => {
+        // Use STOP (limit) if price provided, else STOP_MARKET
+        if order.price > 0.0 {
+          params.push("type=STOP".to_string());
+          params.push(format!("price={}", order.price));
+          params.push(format!("timeInForce={}", order.time_in_force));
+        } else {
+          params.push("type=STOP_MARKET".to_string());
+        }
+        let stop = order.stop_price.unwrap_or(order.price);
+        if stop > 0.0 { params.push(format!("stopPrice={}", stop)); }
+      }
+      OrderType::TrailingStop => {
+        // Binance requires callbackRate in percent (0.1-5.0)
+        params.push("type=TRAILING_STOP_MARKET".to_string());
+        let cb = order.trailing_delta.unwrap_or(0.5).max(0.1).min(5.0);
+        params.push(format!("callbackRate={}", cb));
+        // Optional activationPrice maps from stop_price when available
+        if let Some(act) = order.stop_price { params.push(format!("activationPrice={}", act)); }
+      }
     }
     let query = params.join("&");
     let signature = self.sign(&query);
