@@ -308,4 +308,3 @@ async fn run_backtest() -> Result<(), anyhow::Error> {
   
   Ok(())
 }
-``
