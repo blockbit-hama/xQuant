@@ -88,8 +88,15 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
     log::warn!("market providers connect failed: {} — running with mocks only", e);
   }
   
-  // 거래소 인스턴스 생성
-  let exchange = Arc::new(RwLock::new(MockExchange::new(config.clone())));
+  // 거래소 인스턴스 생성 (실거래/모의 선택)
+  let exchange: Arc<RwLock<dyn Exchange>> = if !config.exchange.use_mock {
+    let base = config.exchange.base_url.clone().unwrap_or("https://fapi.binance.com".to_string());
+    let key = config.exchange.api_key.clone().unwrap_or_default();
+    let sec = config.exchange.api_secret.clone().unwrap_or_default();
+    Arc::new(RwLock::new(crate::exchange::binance_futures::BinanceFuturesExchange::new(base, key, sec)))
+  } else {
+    Arc::new(RwLock::new(MockExchange::new(config.clone())))
+  };
   log::info!("모의 거래소 초기화 완료");
   
   // 주문 저장소 생성
