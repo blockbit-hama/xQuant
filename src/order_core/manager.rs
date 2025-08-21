@@ -35,7 +35,7 @@ impl OrderManager {
         self.validators.push(validator);
     }
 
-    /// 주문 생성 및 제출
+    /// 주문 생성 및 제출 (간단 재시도 포함)
     pub async fn create_order(&self, mut order: Order) -> Result<OrderId, TradingError> {
         // 주문 검증
         for validator in &self.validators {
@@ -53,11 +53,32 @@ impl OrderManager {
             repo.save(&order).await?;
         }
 
-        // 주문 제출
-        let order_id = {
-            let mut exchange = self.exchange.write().await;
-            exchange.submit_order(order.clone()).await?
-        };
+        // 주문 제출 (재시도)
+        let mut last_err: Option<TradingError> = None;
+        let mut attempt = 0u32;
+        let max_retries = 3u32;
+        let mut order_id: Option<OrderId> = None;
+
+        while attempt <= max_retries {
+            let submit_res = {
+                let mut exchange = self.exchange.write().await;
+                exchange.submit_order(order.clone()).await
+            };
+
+            match submit_res {
+                Ok(oid) => { order_id = Some(oid); break; }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt == max_retries { break; }
+                    let backoff_ms = 200u64.saturating_mul(2u64.pow(attempt));
+                    tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                    attempt += 1;
+                    continue;
+                }
+            }
+        }
+
+        let order_id = match order_id { Some(id) => id, None => return Err(last_err.unwrap_or(TradingError::Unknown("submit failed".into()))) };
 
         // 주문 ID 업데이트
         {
