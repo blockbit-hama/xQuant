@@ -101,6 +101,11 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
 
   // 선물 기본 설정(실거래 사용 시): 레버리지/포지션모드/마진모드 적용
   if !config.exchange.use_mock {
+    // 서버 시간 동기화
+    {
+      let mut ex = exchange.write().await;
+      if let Err(e) = ex.sync_time().await { log::warn!("time sync failed: {}", e); }
+    }
     if let Err(e) = init_futures_defaults(exchange.clone(), vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()], 20, /*isolated*/ false, /*hedge*/ false).await {
       log::warn!("futures defaults init failed: {}", e);
     }

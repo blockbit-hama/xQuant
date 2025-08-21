@@ -21,6 +21,7 @@ pub struct BinanceFuturesExchange {
   pub recv_window_ms: u64,
   pub min_interval_ms: u64,
   pub last_request_ms: AtomicI64,
+  pub time_offset_ms: AtomicI64,
 }
 
 impl BinanceFuturesExchange {
@@ -33,6 +34,7 @@ impl BinanceFuturesExchange {
       recv_window_ms: 5000,
       min_interval_ms: 50,
       last_request_ms: AtomicI64::new(0),
+      time_offset_ms: AtomicI64::new(0),
     }
   }
 
@@ -57,6 +59,8 @@ impl BinanceFuturesExchange {
     }
     self.last_request_ms.store(Self::timestamp_ms(), Ordering::SeqCst);
   }
+
+  fn ts_with_offset(&self) -> i64 { Self::timestamp_ms() + self.time_offset_ms.load(Ordering::SeqCst) }
 }
 
 #[async_trait]
@@ -64,7 +68,7 @@ impl Exchange for BinanceFuturesExchange {
   async fn submit_order(&mut self, order: Order) -> Result<OrderId, TradingError> {
     // Build Binance Futures order params by type
     let side = match order.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL" };
-    let ts = Self::timestamp_ms();
+    let ts = self.ts_with_offset();
     let mut params = vec![
       format!("symbol={}", order.symbol),
       format!("side={}", side),
@@ -154,7 +158,7 @@ impl Exchange for BinanceFuturesExchange {
     let high = json.get("highPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(close);
     let low = json.get("lowPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(close);
     let volume = json.get("volume").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-    Ok(MarketData { symbol: symbol.to_string(), timestamp: Self::timestamp_ms(), open: close, high, low, close, volume })
+    Ok(MarketData { symbol: symbol.to_string(), timestamp: self.ts_with_offset(), open: close, high, low, close, volume })
   }
 
   async fn get_historical_data(&self, _symbol: &str, _interval: &str, _start_time: i64, _end_time: Option<i64>, _limit: Option<usize>) -> Result<Vec<MarketData>, TradingError> {
@@ -164,7 +168,7 @@ impl Exchange for BinanceFuturesExchange {
   async fn get_balance(&self, _asset: &str) -> Result<f64, TradingError> { Ok(0.0) }
 
   async fn set_futures_leverage(&mut self, symbol: &str, leverage: u32) -> Result<(), TradingError> {
-    let ts = Self::timestamp_ms();
+    let ts = self.ts_with_offset();
     let q = format!("symbol={}&leverage={}&timestamp={}&recvWindow={}", symbol, leverage, ts, self.recv_window_ms);
     let url = format!("{}/fapi/v1/leverage?{}&signature={}", self.base_url, q, self.sign(&q));
     self.throttle().await;
@@ -175,7 +179,7 @@ impl Exchange for BinanceFuturesExchange {
   }
 
   async fn set_futures_position_mode(&mut self, hedge: bool) -> Result<(), TradingError> {
-    let ts = Self::timestamp_ms();
+    let ts = self.ts_with_offset();
     let q = format!("dualSidePosition={}&timestamp={}&recvWindow={}", if hedge {"true"} else {"false"}, ts, self.recv_window_ms);
     let url = format!("{}/fapi/v1/positionSide/dual?{}&signature={}", self.base_url, q, self.sign(&q));
     self.throttle().await;
@@ -187,7 +191,7 @@ impl Exchange for BinanceFuturesExchange {
 
   async fn set_futures_margin_mode(&mut self, symbol: &str, isolated: bool) -> Result<(), TradingError> {
     // NOTE: Binance uses marginType=ISOLATED|CROSSED
-    let ts = Self::timestamp_ms();
+    let ts = self.ts_with_offset();
     let q = format!("symbol={}&marginType={}&timestamp={}&recvWindow={}", symbol, if isolated {"ISOLATED"} else {"CROSSED"}, ts, self.recv_window_ms);
     let url = format!("{}/fapi/v1/marginType?{}&signature={}", self.base_url, q, self.sign(&q));
     self.throttle().await;
@@ -195,5 +199,24 @@ impl Exchange for BinanceFuturesExchange {
       .map_err(|e| TradingError::ExchangeError(format!("set margin mode http error: {}", e)))?;
     if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("set margin mode failed: {}", res.status()))); }
     Ok(())
+  }
+
+  async fn sync_time(&mut self) -> Result<(), TradingError> {
+    // GET /fapi/v1/time
+    let url = format!("{}/fapi/v1/time", self.base_url);
+    self.throttle().await;
+    let res = self.http.get(url).send().await
+      .map_err(|e| TradingError::ExchangeError(format!("time http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("time failed: {}", res.status()))); }
+    let v = res.json::<serde_json::Value>().await
+      .map_err(|e| TradingError::ExchangeError(format!("time parse error: {}", e)))?;
+    if let Some(server_ts) = v.get("serverTime").and_then(|t| t.as_i64()) {
+      let local = Self::timestamp_ms();
+      let offset = server_ts - local;
+      self.time_offset_ms.store(offset, Ordering::SeqCst);
+      Ok(())
+    } else {
+      Err(TradingError::ParseError("serverTime missing".into()))
+    }
   }
 }

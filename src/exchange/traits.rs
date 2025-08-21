@@ -44,6 +44,9 @@ pub trait Exchange: Send + Sync {
     /// Get account balance
     async fn get_balance(&self, asset: &str) -> Result<f64, TradingError>;
 
+    /// Optional: sync server time for signed requests (default no-op)
+    async fn sync_time(&mut self) -> Result<(), TradingError> { Ok(()) }
+
     /// Optional: set futures leverage for a symbol (default no-op)
     async fn set_futures_leverage(&mut self, _symbol: &str, _leverage: u32) -> Result<(), TradingError> { Ok(()) }
 
