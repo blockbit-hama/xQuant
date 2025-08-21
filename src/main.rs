@@ -8,6 +8,7 @@
 mod api;
 mod backtest;
 mod config;
+mod prediction_client;
 mod core;
 mod error;
 mod exchange;
@@ -43,9 +44,8 @@ use crate::models::order::OrderSide;
 use crate::strategies::technical::TechnicalStrategy;
 use crate::strategies::combined::CombinedStrategy;
 use crate::core::strategy_manager::StrategyManager;
-use crate::trading_bots::bot_config::TradingBotConfig;
 use crate::exchange::traits::Exchange;
-use crate::prediction_client::{PredictionClient, SignalRequest};
+use crate::prediction_client::PredictionClient;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -122,10 +122,8 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   }
 
   // 기본 기술적 분석 전략 추가 (예시)
-  if config.enable_ta_strategies {
-    setup_technical_strategies(strategy_manager.clone(), exchange.clone(), market_stream.clone()).await?;
-    log::info!("기술적 분석 전략 초기화 완료");
-  }
+  setup_technical_strategies(strategy_manager.clone(), exchange.clone(), market_stream.clone()).await?;
+  log::info!("기술적 분석 전략 초기화 완료");
   
   // API 라우트 초기화 (전략 매니저 추가)
   let routes = routes::create_routes(
@@ -138,7 +136,7 @@ async fn run_live_trading(config: Config) -> Result<(), anyhow::Error> {
   
   // Warp 서버 시작
   let addr = ([127, 0, 0, 1], 3030);
-  log::info!("서버 시작: http://{}:{}/", addr.0.join("."), addr.1);
+  log::info!("서버 시작: http://127.0.0.1:3030/");
   warp::serve(routes).run(addr).await;
   
   Ok(())
@@ -205,11 +203,7 @@ async fn setup_technical_strategies(
   manager.add_strategy(Box::new(combined_strategy))?;
   manager.add_strategy(Box::new(macd_vwap_strategy))?;
   
-  // 시장 데이터 스트림에 전략 매니저 연결
-  {
-    let mut stream = market_stream.write().await;
-    stream.register_strategy_manager(strategy_manager.clone());
-  }
+  // 시장 데이터 스트림 연결은 추후 구현 예정
   
   Ok(())
 }
@@ -267,7 +261,7 @@ async fn run_backtest() -> Result<(), anyhow::Error> {
   
   // 명령줄 인수 확인 - 어떤 백테스트를 실행할지 결정
   let args: Vec<String> = std::env::args().collect();
-  let scenario = if args.len() > 2 {
+  let mut scenario = if args.len() > 2 {
     match args[2].as_str() {
       "ma" => ta_scenario,
       "rsi" => rsi_scenario,
