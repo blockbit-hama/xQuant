@@ -53,16 +53,17 @@ pub fn create_routes(
       .and(warp::body::json())
       .and(exchange_filter.clone())
       .and(order_manager_filter.clone())
+      .and(strategy_manager_filter.clone())
       .and_then(handlers::create_vwap_order)
       .or(vwap
         .and(warp::path::param::<String>())
         .and(warp::get())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::get_vwap_status))
       .or(vwap
         .and(warp::path::param::<String>())
         .and(warp::delete())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::cancel_vwap_order));
     
     // Iceberg 주문 라우트
@@ -73,16 +74,17 @@ pub fn create_routes(
       .and(warp::body::json())
       .and(exchange_filter.clone())
       .and(order_manager_filter.clone())
+      .and(strategy_manager_filter.clone())
       .and_then(handlers::create_iceberg_order)
       .or(iceberg
         .and(warp::path::param::<String>())
         .and(warp::get())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::get_iceberg_status))
       .or(iceberg
         .and(warp::path::param::<String>())
         .and(warp::delete())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::cancel_iceberg_order));
     
     // Trailing Stop 라우트
@@ -93,16 +95,17 @@ pub fn create_routes(
       .and(warp::body::json())
       .and(exchange_filter.clone())
       .and(order_manager_filter.clone())
+      .and(strategy_manager_filter.clone())
       .and_then(handlers::create_trailing_stop)
       .or(trailing
         .and(warp::path::param::<String>())
         .and(warp::get())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::get_trailing_stop_status))
       .or(trailing
         .and(warp::path::param::<String>())
         .and(warp::delete())
-        .and(order_manager_filter.clone())
+        .and(strategy_manager_filter.clone())
         .and_then(handlers::cancel_trailing_stop));
     
     // 시장 데이터 라우트

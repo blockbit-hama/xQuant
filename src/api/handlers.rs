@@ -637,82 +637,142 @@ pub async fn cancel_order(
   }
 }
 
-// VWAP endpoints (stubs)
+// VWAP endpoints
 #[derive(Debug, Deserialize)]
 pub struct CreateVwapRequest { pub symbol: String, pub side: OrderSide, pub target_quantity: f64, pub execution_interval_ms: i64, pub vwap_window: Option<usize> }
 
 pub async fn create_vwap_order(
-  _req: CreateVwapRequest,
-  _exchange: Arc<RwLock<dyn Exchange>>,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  req: CreateVwapRequest,
+  _exchange: Arc<RwLock<dyn Exchange>>, // reserved for validation
+  _order_manager: Arc<RwLock<OrderManager>>, // reserved for submission wiring
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"VWAP not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let window = req.vwap_window.unwrap_or(20);
+  let strategy = crate::strategies::vwap::VwapStrategy::new(
+    req.symbol.clone(), req.side, req.target_quantity, req.execution_interval_ms, window
+  );
+
+  let name = strategy.name().to_string();
+  let mut manager = strategy_manager.write().await;
+  match manager.add_strategy(Box::new(strategy)) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({
+      "status": "success",
+      "strategy_name": name
+    })), StatusCode::CREATED)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("Failed to add VWAP strategy: {}", e)})), StatusCode::BAD_REQUEST))
+  }
 }
 
 pub async fn get_vwap_status(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"VWAP status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let manager = strategy_manager.read().await;
+  match manager.get_strategy_status(&id) {
+    Ok((name, active)) => Ok(with_status(json(&serde_json::json!({"name": name, "active": active})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
 pub async fn cancel_vwap_order(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"VWAP cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let mut manager = strategy_manager.write().await;
+  match manager.remove_strategy(&id) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"deleted","strategy_name": id})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
-// Iceberg endpoints (stubs)
+// Iceberg endpoints
 #[derive(Debug, Deserialize)]
 pub struct CreateIcebergRequest { pub symbol: String, pub side: OrderSide, pub total_quantity: f64, pub display_size: f64 }
 
 pub async fn create_iceberg_order(
-  _req: CreateIcebergRequest,
+  req: CreateIcebergRequest,
   _exchange: Arc<RwLock<dyn Exchange>>,
   _order_manager: Arc<RwLock<OrderManager>>,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Iceberg not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  // 지정가는 현재가 기반 외부에서 설정해야 하지만, 여기서는 표시수량 기반으로 즉시 등록
+  let limit_price = 0.0; // 실제 연결 시 현재가로 대체
+  let strategy = crate::strategies::iceberg::IcebergStrategy::new(
+    req.symbol.clone(), req.side, req.total_quantity, limit_price, req.display_size
+  );
+
+  let name = strategy.name().to_string();
+  let mut manager = strategy_manager.write().await;
+  match manager.add_strategy(Box::new(strategy)) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"success","strategy_name": name})), StatusCode::CREATED)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("Failed to add Iceberg strategy: {}", e)})), StatusCode::BAD_REQUEST))
+  }
 }
 
 pub async fn get_iceberg_status(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Iceberg status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let manager = strategy_manager.read().await;
+  match manager.get_strategy_status(&id) {
+    Ok((name, active)) => Ok(with_status(json(&serde_json::json!({"name": name, "active": active})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
 pub async fn cancel_iceberg_order(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Iceberg cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let mut manager = strategy_manager.write().await;
+  match manager.remove_strategy(&id) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"deleted","strategy_name": id})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
-// Trailing stop endpoints (stubs)
+// Trailing stop endpoints
 #[derive(Debug, Deserialize)]
 pub struct CreateTrailingStopRequest { pub symbol: String, pub side: OrderSide, pub quantity: f64, pub trailing_delta: f64 }
 
 pub async fn create_trailing_stop(
-  _req: CreateTrailingStopRequest,
+  req: CreateTrailingStopRequest,
   _exchange: Arc<RwLock<dyn Exchange>>,
   _order_manager: Arc<RwLock<OrderManager>>,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let strategy = crate::strategies::trailing_stop::TrailingStopStrategy::new(
+    req.symbol.clone(), req.side, req.quantity, req.trailing_delta, None
+  );
+
+  let name = strategy.name().to_string();
+  let mut manager = strategy_manager.write().await;
+  match manager.add_strategy(Box::new(strategy)) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"success","strategy_name": name})), StatusCode::CREATED)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("Failed to add TrailingStop strategy: {}", e)})), StatusCode::BAD_REQUEST))
+  }
 }
 
 pub async fn get_trailing_stop_status(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop status not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let manager = strategy_manager.read().await;
+  match manager.get_strategy_status(&id) {
+    Ok((name, active)) => Ok(with_status(json(&serde_json::json!({"name": name, "active": active})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
 pub async fn cancel_trailing_stop(
-  _id: String,
-  _order_manager: Arc<RwLock<OrderManager>>,
+  id: String,
+  strategy_manager: Arc<RwLock<StrategyManager>>,
 ) -> Result<impl Reply, warp::Rejection> {
-  Ok(with_status(json(&serde_json::json!({"error":"Trailing stop cancel not implemented"})), StatusCode::NOT_IMPLEMENTED))
+  let mut manager = strategy_manager.write().await;
+  match manager.remove_strategy(&id) {
+    Ok(_) => Ok(with_status(json(&serde_json::json!({"status":"deleted","strategy_name": id})), StatusCode::OK)),
+    Err(e) => Ok(with_status(json(&serde_json::json!({"error": format!("{}", e)})), StatusCode::NOT_FOUND))
+  }
 }
 
 // Market data endpoint
