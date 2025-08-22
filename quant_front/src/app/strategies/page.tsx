@@ -1,4 +1,5 @@
 import { deleteStrategy, listStrategies, toggleStrategy } from '@/src/lib/api';
+import Link from 'next/link';
 
 async function fetchData() {
   const items = await listStrategies();
@@ -21,7 +22,7 @@ export default async function StrategiesPage() {
         <tbody>
           {items.map(([name, active]) => (
             <tr key={name} className="border-b border-gray-800">
-              <td className="py-2">{name}</td>
+              <td className="py-2"><Link className="underline" href={`/strategies/${encodeURIComponent(name)}`}>{name}</Link></td>
               <td className="py-2">{String(active)}</td>
               <td className="py-2 space-x-2">
                 <form action={async () => { 'use server'; await toggleStrategy(name, !active) }}>
