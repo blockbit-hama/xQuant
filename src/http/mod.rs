@@ -49,6 +49,7 @@ pub fn build_router(state: AppState) -> Router {
     .route("/ws/prices/:symbol", get(ws_prices))
     .route("/ws/orders", get(ws_orders))
     .route("/ws/positions", get(ws_positions))
+    .route("/ws/strategies", get(ws_strategies))
     .with_state(state)
     .layer(cors)
 }
@@ -286,6 +287,23 @@ async fn positions_stream(mut socket: WebSocket, state: AppState) {
       if let Ok(text) = serde_json::to_string(&list) {
         let _ = socket.send(Message::Text(text)).await;
       }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+  }
+}
+
+async fn ws_strategies(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| strategies_stream(socket, state))
+}
+
+async fn strategies_stream(mut socket: WebSocket, state: AppState) {
+  loop {
+    let snapshot = {
+      let mgr = state.strategy_manager.read().await;
+      mgr.list_strategies()
+    };
+    if let Ok(text) = serde_json::to_string(&snapshot) {
+      let _ = socket.send(Message::Text(text)).await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
   }
