@@ -33,7 +33,7 @@ pub fn build_router(state: AppState) -> Router {
     .route("/strategies/iceberg", post(create_iceberg_strategy))
     .route("/strategies/trailing", post(create_trailing_strategy))
     .route("/strategies/:name/toggle", post(toggle_strategy))
-    .route("/strategies/:name", get(get_strategy_status).delete(delete_strategy))
+    .route("/strategies/:name", get(get_strategy_info).delete(delete_strategy))
     // futures settings
     .route("/futures/position_mode", post(set_position_mode))
     .route("/futures/margin_mode", post(set_margin_mode))
@@ -153,10 +153,10 @@ async fn delete_strategy(Path(name): Path<String>, State(state): State<AppState>
   Ok(axum::Json(serde_json::json!({"status":"ok","deleted":name})))
 }
 
-async fn get_strategy_status(Path(name): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+async fn get_strategy_info(Path(name): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
   let mgr = state.strategy_manager.read().await;
-  match mgr.get_strategy_status(&name) {
-    Ok((n, active)) => Ok(axum::Json(serde_json::json!({"name":n, "active":active}))),
+  match mgr.get_strategy_info(&name) {
+    Ok((n, desc, active)) => Ok(axum::Json(serde_json::json!({"name":n, "description": desc, "active":active}))),
     Err(_) => Err(axum::http::StatusCode::NOT_FOUND)
   }
 }

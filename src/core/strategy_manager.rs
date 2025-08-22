@@ -113,6 +113,13 @@ impl StrategyManager {
       .ok_or_else(|| TradingError::StrategyNotFound(format!("Strategy '{}' not found", name)))?;
     Ok((name.to_string(), strategy.is_active()))
   }
+
+  // 전략 상세 정보 조회 (이름, 설명, 활성여부)
+  pub fn get_strategy_info(&self, name: &str) -> Result<(String, String, bool), TradingError> {
+    let strategy = self.strategies.get(name)
+      .ok_or_else(|| TradingError::StrategyNotFound(format!("Strategy '{}' not found", name)))?;
+    Ok((strategy.name().to_string(), strategy.description().to_string(), strategy.is_active()))
+  }
   
   // 사용 가능한 전략 목록
   pub fn list_strategies(&self) -> Vec<(String, bool)> {
