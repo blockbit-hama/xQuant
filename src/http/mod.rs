@@ -1,4 +1,4 @@
-use axum::{routing::{get, post}, Router, extract::State};
+use axum::{routing::{get, post}, Router, extract::{Path, State}};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -24,6 +24,15 @@ pub fn build_router(state: AppState) -> Router {
     .route("/health", get(|| async { axum::Json(Health { status: "ok" }) }))
     .route("/strategies", get(list_strategies))
     .route("/strategies/ta", post(create_ta_strategy))
+    .route("/strategies/:name/toggle", post(toggle_strategy))
+    .route("/strategies/:name", get(get_strategy_status).delete(delete_strategy))
+    // futures settings
+    .route("/futures/position_mode", post(set_position_mode))
+    .route("/futures/margin_mode", post(set_margin_mode))
+    .route("/futures/leverage", post(set_leverage))
+    .route("/futures/settings", post(apply_futures_settings))
+    // market data
+    .route("/market/:symbol", get(get_market_snapshot))
     .with_state(state)
     .layer(cors)
 }
@@ -65,6 +74,101 @@ async fn create_ta_strategy(State(state): State<AppState>, axum::Json(req): axum
       if let Err(_) = mgr.add_strategy(Box::new(strategy)) { return Err(axum::http::StatusCode::BAD_REQUEST); }
       Ok(axum::Json(serde_json::json!({"status":"success","strategy_name": name})))
     }
+    Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+struct ToggleReq { active: bool }
+
+async fn toggle_strategy(Path(name): Path<String>, State(state): State<AppState>, axum::Json(body): axum::Json<ToggleReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.set_strategy_active(&name, body.active).map_err(|_| axum::http::StatusCode::NOT_FOUND)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","name":name,"active":body.active})))
+}
+
+async fn delete_strategy(Path(name): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.remove_strategy(&name).map_err(|_| axum::http::StatusCode::NOT_FOUND)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","deleted":name})))
+}
+
+async fn get_strategy_status(Path(name): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mgr = state.strategy_manager.read().await;
+  match mgr.get_strategy_status(&name) {
+    Ok((n, active)) => Ok(axum::Json(serde_json::json!({"name":n, "active":active}))),
+    Err(_) => Err(axum::http::StatusCode::NOT_FOUND)
+  }
+}
+
+// =============== Futures settings ===============
+#[derive(Debug, Deserialize)]
+struct SetPositionModeRequest { hedge: bool }
+
+#[derive(Debug, Deserialize)]
+struct SetMarginModeRequest { symbol: String, isolated: bool }
+
+#[derive(Debug, Deserialize)]
+struct SetLeverageRequest { symbol: String, leverage: u32 }
+
+#[derive(Debug, Deserialize)]
+struct FuturesSettingsRequest {
+  position_mode: Option<SetPositionModeRequest>,
+  margins: Option<Vec<SetMarginModeRequest>>, 
+  leverages: Option<Vec<SetLeverageRequest>>, 
+}
+
+#[derive(Debug, Serialize)]
+struct FuturesSettingsResponse { applied: serde_json::Value }
+
+async fn set_position_mode(State(state): State<AppState>, axum::Json(req): axum::Json<SetPositionModeRequest>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mut ex = state.exchange.write().await;
+  ex.set_futures_position_mode(req.hedge).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","hedge":req.hedge})))
+}
+
+async fn set_margin_mode(State(state): State<AppState>, axum::Json(req): axum::Json<SetMarginModeRequest>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mut ex = state.exchange.write().await;
+  ex.set_futures_margin_mode(&req.symbol, req.isolated).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","symbol":req.symbol,"isolated":req.isolated})))
+}
+
+async fn set_leverage(State(state): State<AppState>, axum::Json(req): axum::Json<SetLeverageRequest>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let mut ex = state.exchange.write().await;
+  ex.set_futures_leverage(&req.symbol, req.leverage).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","symbol":req.symbol,"leverage":req.leverage})))
+}
+
+async fn apply_futures_settings(State(state): State<AppState>, axum::Json(req): axum::Json<FuturesSettingsRequest>) -> Result<axum::Json<FuturesSettingsResponse>, axum::http::StatusCode> {
+  let mut applied = serde_json::json!({"position_mode": null, "margins": [], "leverages": []});
+  {
+    if let Some(pm) = &req.position_mode {
+      let mut ex = state.exchange.write().await;
+      ex.set_futures_position_mode(pm.hedge).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+      applied["position_mode"] = serde_json::json!({"hedge": pm.hedge});
+    }
+  }
+  if let Some(items) = &req.margins {
+    for m in items {
+      let mut ex = state.exchange.write().await;
+      ex.set_futures_margin_mode(&m.symbol, m.isolated).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+      applied["margins"].as_array_mut().unwrap().push(serde_json::json!({"symbol": m.symbol, "isolated": m.isolated}));
+    }
+  }
+  if let Some(items) = &req.leverages {
+    for l in items {
+      let mut ex = state.exchange.write().await;
+      ex.set_futures_leverage(&l.symbol, l.leverage).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+      applied["leverages"].as_array_mut().unwrap().push(serde_json::json!({"symbol": l.symbol, "leverage": l.leverage}));
+    }
+  }
+  Ok(axum::Json(FuturesSettingsResponse { applied }))
+}
+
+async fn get_market_snapshot(Path(symbol): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let ex = state.exchange.read().await;
+  match ex.get_market_data(&symbol).await {
+    Ok(md) => Ok(axum::Json(serde_json::to_value(md).unwrap_or(serde_json::json!({"symbol":symbol})))),
     Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
   }
 }
