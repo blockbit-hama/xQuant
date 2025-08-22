@@ -131,3 +131,18 @@ Cargo.lock
 *.pdb
 
 # End of https://www.toptal.com/developers/gitignore/api/clion,rust
+
+# Node / Next.js frontend
+quant_front/node_modules/
+quant_front/.next/
+quant_front/.turbo/
+quant_front/out/
+quant_front/.env*
+
+# Python
+python_prediction/.venv/
+python_prediction/__pycache__/
+**/*.pyc
+
+# macOS
+.DS_Store
