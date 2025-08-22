@@ -1,5 +1,6 @@
 import './globals.css';
 import Link from 'next/link';
+import StrategiesLive from '@/src/components/StrategiesLive';
 
 export default function Page() {
   return (
@@ -14,6 +15,7 @@ export default function Page() {
         <Health />
         <Strategies />
       </div>
+      <StrategiesLive />
     </main>
   );
 }
