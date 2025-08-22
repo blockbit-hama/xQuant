@@ -1,7 +1,15 @@
+import './globals.css';
+import Link from 'next/link';
+
 export default function Page() {
   return (
     <main className="p-6 space-y-6">
       <h1 className="text-2xl font-semibold">xQuant</h1>
+      <nav className="space-x-4">
+        <Link className="underline" href="/">Home</Link>
+        <Link className="underline" href="/strategies">Strategies</Link>
+        <Link className="underline" href="/strategies/new">New Strategy</Link>
+      </nav>
       <div className="grid gap-4 md:grid-cols-2">
         <Health />
         <Strategies />
