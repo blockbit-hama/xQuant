@@ -11,12 +11,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
-        <header className="p-4 border-b border-gray-800 flex gap-4">
+        <header className="p-4 border-b border-gray-800 flex gap-4 flex-wrap">
           <Link className="underline" href="/">Home</Link>
           <Link className="underline" href="/strategies">Strategies</Link>
           <Link className="underline" href="/strategies/new">New Strategy</Link>
           <Link className="underline" href="/futures">Futures</Link>
           <Link className="underline" href="/market">Market</Link>
+          <Link className="underline" href="/orders">Orders</Link>
         </header>
         {children}
       </body>

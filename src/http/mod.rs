@@ -7,11 +7,14 @@ use tower_http::cors::{CorsLayer, Any};
 use crate::core::strategy_manager::StrategyManager;
 use crate::exchange::traits::Exchange;
 use crate::strategies::Strategy;
+use crate::order_core::manager::OrderManager;
+use crate::models::order::{Order, OrderSide, OrderType, OrderId};
 
 #[derive(Clone)]
 pub struct AppState {
   pub exchange: Arc<RwLock<dyn Exchange>>, 
   pub strategy_manager: Arc<RwLock<StrategyManager>>, 
+  // Note: OrderManager is in main runtime; for API calls we recreate lightweight paths via exchange+repo if needed.
 }
 
 #[derive(Debug, Serialize)]
@@ -33,6 +36,9 @@ pub fn build_router(state: AppState) -> Router {
     .route("/futures/settings", post(apply_futures_settings))
     // market data
     .route("/market/:symbol", get(get_market_snapshot))
+    // orders
+    .route("/orders", post(create_order))
+    .route("/orders/:id", get(get_order_status).delete(cancel_order))
     .with_state(state)
     .layer(cors)
 }
@@ -169,6 +175,52 @@ async fn get_market_snapshot(Path(symbol): Path<String>, State(state): State<App
   let ex = state.exchange.read().await;
   match ex.get_market_data(&symbol).await {
     Ok(md) => Ok(axum::Json(serde_json::to_value(md).unwrap_or(serde_json::json!({"symbol":symbol})))),
+    Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateOrderReq {
+  symbol: String,
+  side: String,
+  order_type: String,
+  quantity: f64,
+  price: Option<f64>,
+  reduce_only: Option<bool>,
+  position_side: Option<String>,
+}
+
+async fn create_order(State(state): State<AppState>, axum::Json(req): axum::Json<CreateOrderReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let side = match req.side.to_lowercase().as_str() { "buy" => OrderSide::Buy, "sell" => OrderSide::Sell, _ => return Err(axum::http::StatusCode::BAD_REQUEST) };
+  let mut order = Order::new(req.symbol, side, match req.order_type.to_lowercase().as_str() {
+    "market" => OrderType::Market,
+    "limit" => OrderType::Limit,
+    "stop" | "stoploss" => OrderType::StopLoss,
+    _ => OrderType::Market,
+  }, req.quantity, req.price.unwrap_or(0.0));
+  if let Some(ro) = req.reduce_only { order = order.with_reduce_only(ro); }
+  if let Some(ps) = req.position_side { order = order.with_position_side(ps); }
+
+  // Minimal submit path via Exchange directly
+  let oid = {
+    let mut ex = state.exchange.write().await;
+    ex.submit_order(order).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?
+  };
+  Ok(axum::Json(serde_json::json!({"status":"ok","order_id": oid.0})))
+}
+
+async fn cancel_order(Path(id): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let order_id = OrderId(id);
+  let mut ex = state.exchange.write().await;
+  ex.cancel_order(&order_id).await.map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"ok","cancelled":true})))
+}
+
+async fn get_order_status(Path(id): Path<String>, State(state): State<AppState>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  let order_id = OrderId(id);
+  let ex = state.exchange.read().await;
+  match ex.get_order_status(&order_id).await {
+    Ok(status) => Ok(axum::Json(serde_json::json!({"status": format!("{:?}", status)}))),
     Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
   }
 }
