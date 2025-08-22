@@ -31,6 +31,24 @@ export default function OrdersPage() {
     return () => { alive = false; clearInterval(id); };
   }, [base]);
 
+  useEffect(() => {
+    // WebSocket live updates
+    let alive = true;
+    let ws: WebSocket | null = null;
+    try {
+      const wsBase = base.replace(/^http/, 'ws');
+      ws = new WebSocket(`${wsBase}/ws/orders`);
+      ws.onmessage = (evt) => {
+        if (!alive) return;
+        try {
+          const list = JSON.parse(evt.data as string);
+          if (Array.isArray(list)) setOrders(list);
+        } catch {}
+      };
+    } catch {}
+    return () => { alive = false; if (ws) { try { ws.close(); } catch {} } };
+  }, [base]);
+
   return (
     <main className="p-6 space-y-6 max-w-4xl">
       <h1 className="text-2xl font-semibold">Orders</h1>

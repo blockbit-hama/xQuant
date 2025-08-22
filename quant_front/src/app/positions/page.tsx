@@ -14,6 +14,24 @@ export default function PositionsPage() {
     return () => { alive = false; clearInterval(id); };
   }, [base]);
 
+  useEffect(() => {
+    // WebSocket live updates
+    let alive = true;
+    let ws: WebSocket | null = null;
+    try {
+      const wsBase = base.replace(/^http/, 'ws');
+      ws = new WebSocket(`${wsBase}/ws/positions`);
+      ws.onmessage = (evt) => {
+        if (!alive) return;
+        try {
+          const list = JSON.parse(evt.data as string);
+          if (Array.isArray(list)) setRows(list);
+        } catch {}
+      };
+    } catch {}
+    return () => { alive = false; if (ws) { try { ws.close(); } catch {} } };
+  }, [base]);
+
   return (
     <main className="p-6 space-y-6 max-w-3xl">
       <h1 className="text-2xl font-semibold">Positions</h1>
