@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 
+"use client";
 export default function MarketPage() {
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [data, setData] = useState<any>(null);
@@ -24,6 +25,27 @@ export default function MarketPage() {
     load();
     const id = setInterval(load, 2000);
     return () => { alive = false; clearInterval(id); };
+  }, [symbol, base]);
+
+  useEffect(() => {
+    // WebSocket live updates (fallback to polling already active)
+    let alive = true;
+    let ws: WebSocket | null = null;
+    try {
+      const wsBase = base.replace(/^http/, 'ws');
+      ws = new WebSocket(`${wsBase}/ws/prices/${encodeURIComponent(symbol)}`);
+      ws.onmessage = (evt) => {
+        if (!alive) return;
+        try {
+          const msg = JSON.parse(evt.data as string);
+          if (msg && typeof msg.price === 'number') {
+            const t = Date.now();
+            setSeries(s => [...s.slice(-180), { t, p: msg.price }]);
+          }
+        } catch {}
+      };
+    } catch {}
+    return () => { alive = false; if (ws) { try { ws.close(); } catch {} } };
   }, [symbol, base]);
 
   return (
