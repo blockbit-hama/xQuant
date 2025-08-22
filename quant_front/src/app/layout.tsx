@@ -19,6 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link className="underline" href="/market">Market</Link>
           <Link className="underline" href="/orders">Orders</Link>
           <Link className="underline" href="/positions">Positions</Link>
+          <Link className="underline" href="/signals">Signals</Link>
+          <Link className="underline" href="/backtest">Backtest</Link>
         </header>
         {children}
       </body>
