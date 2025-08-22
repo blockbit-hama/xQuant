@@ -47,6 +47,8 @@ pub fn build_router(state: AppState) -> Router {
     .route("/orders", post(create_order))
     .route("/orders/:id", get(get_order_status).delete(cancel_order))
     .route("/ws/prices/:symbol", get(ws_prices))
+    .route("/ws/orders", get(ws_orders))
+    .route("/ws/positions", get(ws_positions))
     .with_state(state)
     .layer(cors)
 }
@@ -248,6 +250,44 @@ async fn price_stream(mut socket: WebSocket, symbol: String, state: AppState) {
     };
     if let Some(p) = price { let _ = socket.send(Message::Text(format!("{{\"symbol\":\"{}\",\"price\":{}}}", symbol, p))).await; }
     tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+  }
+}
+
+async fn ws_orders(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| orders_stream(socket, state))
+}
+
+async fn orders_stream(mut socket: WebSocket, state: AppState) {
+  loop {
+    let data = {
+      let ex = state.exchange.read().await;
+      ex.get_open_orders().await.ok()
+    };
+    if let Some(list) = data {
+      if let Ok(text) = serde_json::to_string(&list) {
+        let _ = socket.send(Message::Text(text)).await;
+      }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+  }
+}
+
+async fn ws_positions(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| positions_stream(socket, state))
+}
+
+async fn positions_stream(mut socket: WebSocket, state: AppState) {
+  loop {
+    let data = {
+      let ex = state.exchange.read().await;
+      ex.get_positions().await.ok()
+    };
+    if let Some(list) = data {
+      if let Ok(text) = serde_json::to_string(&list) {
+        let _ = socket.send(Message::Text(text)).await;
+      }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
   }
 }
 
