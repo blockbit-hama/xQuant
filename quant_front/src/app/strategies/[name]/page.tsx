@@ -1,4 +1,5 @@
 import { AXUM_BASE } from '@/src/lib/config';
+import StrategyLiveInfo from '@/src/components/StrategyLiveInfo';
 
 async function getInfo(name: string) {
   const res = await fetch(`${AXUM_BASE}/strategies/${encodeURIComponent(name)}`, { cache: 'no-store' });
@@ -31,6 +32,7 @@ export default async function StrategyDetail({ params }: { params: { name: strin
         <form action={toggle}><button className="rounded bg-blue-600 px-4 py-2">{info.active ? 'Disable' : 'Enable'}</button></form>
         <form action={remove}><button className="rounded bg-red-600 px-4 py-2">Delete</button></form>
       </div>
+      <StrategyLiveInfo name={info.name} />
     </main>
   );
 }
