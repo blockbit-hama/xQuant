@@ -28,6 +28,10 @@ pub fn build_router(state: AppState) -> Router {
     .route("/health", get(|| async { axum::Json(Health { status: "ok" }) }))
     .route("/strategies", get(list_strategies))
     .route("/strategies/ta", post(create_ta_strategy))
+    .route("/strategies/vwap", post(create_vwap_strategy))
+    .route("/strategies/twap", post(create_twap_strategy))
+    .route("/strategies/iceberg", post(create_iceberg_strategy))
+    .route("/strategies/trailing", post(create_trailing_strategy))
     .route("/strategies/:name/toggle", post(toggle_strategy))
     .route("/strategies/:name", get(get_strategy_status).delete(delete_strategy))
     // futures settings
@@ -84,6 +88,54 @@ async fn create_ta_strategy(State(state): State<AppState>, axum::Json(req): axum
     }
     Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
   }
+}
+
+#[derive(Debug, Deserialize)]
+struct VwapReq { symbol: String, side: String, quantity: f64, window: i64, participation: Option<f64> }
+async fn create_vwap_strategy(State(state): State<AppState>, axum::Json(req): axum::Json<VwapReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  use crate::strategies::vwap::VwapStrategy;
+  use crate::models::order::OrderSide;
+  let side = match req.side.to_lowercase().as_str() { "buy" => OrderSide::Buy, "sell" => OrderSide::Sell, _ => return Err(axum::http::StatusCode::BAD_REQUEST)};
+  let s = VwapStrategy::new(&req.symbol, side, req.quantity, req.window as i64, (req.participation.unwrap_or(0.1)*100.0) as usize);
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.add_strategy(Box::new(s)).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"success","strategy_name": format!("VWAP-{}", req.symbol)})))
+}
+
+#[derive(Debug, Deserialize)]
+struct TwapReq { symbol: String, side: String, quantity: f64, window: i64 }
+async fn create_twap_strategy(State(state): State<AppState>, axum::Json(req): axum::Json<TwapReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  use crate::strategies::twap::TwapStrategy;
+  use crate::models::order::OrderSide;
+  let side = match req.side.to_lowercase().as_str() { "buy" => OrderSide::Buy, "sell" => OrderSide::Sell, _ => return Err(axum::http::StatusCode::BAD_REQUEST)};
+  let s = TwapStrategy::new(&req.symbol, side, req.quantity, req.window as i64, 5);
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.add_strategy(Box::new(s)).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"success","strategy_name": format!("TWAP-{}", req.symbol)})))
+}
+
+#[derive(Debug, Deserialize)]
+struct IcebergReq { symbol: String, side: String, total_qty: f64, visible_qty: f64, price: f64 }
+async fn create_iceberg_strategy(State(state): State<AppState>, axum::Json(req): axum::Json<IcebergReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  use crate::strategies::iceberg::IcebergStrategy;
+  use crate::models::order::OrderSide;
+  let side = match req.side.to_lowercase().as_str() { "buy" => OrderSide::Buy, "sell" => OrderSide::Sell, _ => return Err(axum::http::StatusCode::BAD_REQUEST)};
+  let s = IcebergStrategy::new(req.symbol.clone(), side, req.total_qty, req.visible_qty, req.price);
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.add_strategy(Box::new(s)).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"success","strategy_name": format!("ICEBERG-{}", req.symbol)})))
+}
+
+#[derive(Debug, Deserialize)]
+struct TrailingReq { symbol: String, side: String, qty: f64, callback: f64, activation: Option<f64> }
+async fn create_trailing_strategy(State(state): State<AppState>, axum::Json(req): axum::Json<TrailingReq>) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+  use crate::strategies::trailing_stop::TrailingStopStrategy;
+  use crate::models::order::OrderSide;
+  let side = match req.side.to_lowercase().as_str() { "buy" => OrderSide::Buy, "sell" => OrderSide::Sell, _ => return Err(axum::http::StatusCode::BAD_REQUEST)};
+  let mut s = TrailingStopStrategy::new(req.symbol.clone(), side, req.qty, req.callback, req.activation);
+  let mut mgr = state.strategy_manager.write().await;
+  mgr.add_strategy(Box::new(s)).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+  Ok(axum::Json(serde_json::json!({"status":"success","strategy_name": format!("TRAIL-{}", req.symbol)})))
 }
 
 #[derive(Debug, Deserialize)]
