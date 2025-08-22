@@ -228,11 +228,10 @@ async fn get_order_status(Path(id): Path<String>, State(state): State<AppState>)
 }
 
 async fn get_positions(State(state): State<AppState>) -> Result<axum::Json<Vec<crate::models::position::Position>>, axum::http::StatusCode> {
-  // Build a temporary RiskManager to synthesize positions from open orders until a dedicated endpoint exists
-  let rm_positions = {
-    let ex = state.exchange.clone();
-    let mut rm = RiskManager::new(ex, 10.0, 10_000.0);
-    if let Err(_) = rm.update_positions().await { vec![] } else { rm.get_positions().into_iter().cloned().collect() }
-  };
-  Ok(axum::Json(rm_positions))
+  // Prefer exchange-native positions if available
+  let ex = state.exchange.read().await;
+  match ex.get_positions().await {
+    Ok(v) => Ok(axum::Json(v)),
+    Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
+  }
 }

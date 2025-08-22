@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use crate::error::TradingError;
 use crate::exchange::traits::Exchange;
 use crate::models::market_data::MarketData;
+use crate::models::position::Position;
 use crate::models::order::{Order, OrderId, OrderSide, OrderStatus, OrderType};
 use crate::models::trade::Trade;
 
@@ -237,6 +238,35 @@ impl Exchange for BinanceFuturesExchange {
 
   async fn get_open_orders(&self) -> Result<Vec<Order>, TradingError> {
     Ok(Vec::new())
+  }
+
+  async fn get_positions(&self) -> Result<Vec<Position>, TradingError> {
+    // GET /fapi/v2/positionRisk requires API key/secret
+    let ts = self.ts_with_offset();
+    let q = format!("timestamp={}&recvWindow={}", ts, self.recv_window_ms);
+    let url = format!("{}/fapi/v2/positionRisk?{}&signature={}", self.base_url, q, self.sign(&q));
+    self.throttle().await;
+    let res = self.http.get(url)
+      .header("X-MBX-APIKEY", &self.api_key)
+      .send().await
+      .map_err(|e| TradingError::ExchangeError(format!("positions http error: {}", e)))?;
+    if !res.status().is_success() { return Err(TradingError::ExchangeError(format!("positions failed: {}", res.status()))); }
+    let arr = res.json::<serde_json::Value>().await
+      .map_err(|e| TradingError::ExchangeError(format!("positions parse error: {}", e)))?;
+    let mut out = Vec::new();
+    if let Some(list) = arr.as_array() {
+      for p in list {
+        let symbol = p.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
+        let pos_amt = p.get("positionAmt").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+        let entry_price = p.get("entryPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+        let mark_price = p.get("markPrice").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(entry_price);
+        if symbol.is_empty() { continue; }
+        let mut pos = Position::new(symbol.to_string(), pos_amt, entry_price);
+        pos.update_price(mark_price);
+        out.push(pos);
+      }
+    }
+    Ok(out)
   }
 
   async fn get_recent_trades(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<Trade>, TradingError> {

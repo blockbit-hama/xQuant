@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::error::TradingError;
 use crate::models::market_data::MarketData;
+use crate::models::position::Position;
 use crate::models::order::{Order, OrderId, OrderStatus, OrderType};
 use crate::models::trade::Trade;
 
@@ -55,4 +56,7 @@ pub trait Exchange: Send + Sync {
 
     /// Optional: set margin mode for a symbol (isolated=true). Default no-op
     async fn set_futures_margin_mode(&mut self, _symbol: &str, _isolated: bool) -> Result<(), TradingError> { Ok(()) }
+
+    /// Optional: get current positions snapshot. Default empty list
+    async fn get_positions(&self) -> Result<Vec<Position>, TradingError> { Ok(Vec::new()) }
 }
