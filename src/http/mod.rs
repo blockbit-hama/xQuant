@@ -1,4 +1,5 @@
-use axum::{routing::{get, post}, Router, extract::{Path, State}};
+use axum::{routing::{get, post}, Router, extract::{Path, State}, response::IntoResponse};
+use axum::extract::ws::{WebSocketUpgrade, Message, WebSocket};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -45,6 +46,7 @@ pub fn build_router(state: AppState) -> Router {
     // orders
     .route("/orders", post(create_order))
     .route("/orders/:id", get(get_order_status).delete(cancel_order))
+    .route("/ws/prices/:symbol", get(ws_prices))
     .with_state(state)
     .layer(cors)
 }
@@ -230,6 +232,22 @@ async fn get_market_snapshot(Path(symbol): Path<String>, State(state): State<App
   match ex.get_market_data(&symbol).await {
     Ok(md) => Ok(axum::Json(serde_json::to_value(md).unwrap_or(serde_json::json!({"symbol":symbol})))),
     Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
+  }
+}
+
+async fn ws_prices(ws: WebSocketUpgrade, Path(symbol): Path<String>, State(state): State<AppState>) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| price_stream(socket, symbol, state))
+}
+
+async fn price_stream(mut socket: WebSocket, symbol: String, state: AppState) {
+  loop {
+    // simple 1s polling push
+    let price = {
+      let ex = state.exchange.read().await;
+      ex.get_market_data(&symbol).await.ok().map(|md| md.close)
+    };
+    if let Some(p) = price { let _ = socket.send(Message::Text(format!("{{\"symbol\":\"{}\",\"price\":{}}}", symbol, p))).await; }
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
   }
 }
 
