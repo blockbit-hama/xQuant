@@ -37,3 +37,27 @@ export async function createTaStrategy(payload: { symbol: string; strategy_type:
   if (!res.ok) throw new Error('create ta failed');
   return res.json();
 }
+
+export async function createVwapStrategy(payload: { symbol: string; side: string; quantity: number; window: number; participation?: number }) {
+  const res = await fetch(`${AXUM_BASE}/strategies/vwap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error('create vwap failed');
+  return res.json();
+}
+
+export async function createTwapStrategy(payload: { symbol: string; side: string; quantity: number; window: number }) {
+  const res = await fetch(`${AXUM_BASE}/strategies/twap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error('create twap failed');
+  return res.json();
+}
+
+export async function createIcebergStrategy(payload: { symbol: string; side: string; total_qty: number; visible_qty: number; price: number }) {
+  const res = await fetch(`${AXUM_BASE}/strategies/iceberg`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error('create iceberg failed');
+  return res.json();
+}
+
+export async function createTrailingStrategy(payload: { symbol: string; side: string; qty: number; callback: number; activation?: number }) {
+  const res = await fetch(`${AXUM_BASE}/strategies/trailing`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) throw new Error('create trailing failed');
+  return res.json();
+}
