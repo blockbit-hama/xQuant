@@ -36,6 +36,7 @@ pub fn build_router(state: AppState) -> Router {
     .route("/futures/settings", post(apply_futures_settings))
     // market data
     .route("/market/:symbol", get(get_market_snapshot))
+    .route("/positions", get(get_positions))
     // orders
     .route("/orders", post(create_order))
     .route("/orders/:id", get(get_order_status).delete(cancel_order))
@@ -223,4 +224,9 @@ async fn get_order_status(Path(id): Path<String>, State(state): State<AppState>)
     Ok(status) => Ok(axum::Json(serde_json::json!({"status": format!("{:?}", status)}))),
     Err(_) => Err(axum::http::StatusCode::BAD_REQUEST)
   }
+}
+
+async fn get_positions(State(state): State<AppState>) -> Result<axum::Json<Vec<crate::models::position::Position>>, axum::http::StatusCode> {
+  // Placeholder: synthesize from open orders or return empty until real impl
+  Ok(axum::Json(vec![]))
 }
